@@ -1,0 +1,678 @@
+import { useState, useMemo, useEffect } from "react";
+import {
+  ShoppingCart, Plus, Minus, X, MapPin, Store, Send, Trash2,
+  Settings, Lock, Save, ArrowLeft, LoaderCircle, Navigation,
+  CheckCircle2, Image as ImageIcon,
+} from "lucide-react";
+
+/* =========================================================================
+   CONFIGURACIÓN — Lo único que tenés que completar vos
+   ========================================================================= */
+
+// Pegá acá la URL que te da Google Apps Script al publicar (termina en /exec)
+const SHEETS_API_URL = "PEGA_ACA_TU_URL_DE_GOOGLE_APPS_SCRIPT";
+
+const PHONE_INTL = "595985913400";
+const PHONE_DISPLAY = "0985 913 400";
+const ADDRESS = "Santa María III, Ruta 6ta km 3.5, Encarnación";
+
+/* ========================================================================= */
+
+const BRAND = {
+  charcoal: "#2A2018",
+  paper: "#F0E2BF",
+  paperDark: "#E6D2A3",
+  tomato: "#C1392B",
+  tomatoDark: "#9E2C20",
+  mustard: "#E3A23B",
+  green: "#45603C",
+  cream: "#FBF2DD",
+};
+
+const DEFAULT_MENU = [
+  {
+    category: "Almuerzos",
+    items: [{ id: "alm1", name: "Menú del día", desc: "Plato completo, varía según el día", price: 25000, image: "" }],
+  },
+];
+const DEFAULT_DELIVERY_NOTE = "El costo de envío se coordina según la zona";
+
+function formatGs(n) {
+  return "₲ " + Number(n || 0).toLocaleString("es-PY");
+}
+function formatPriceInput(price) {
+  if (price === "" || price === null || price === undefined) return "";
+  return Number(price).toLocaleString("es-PY") + " Gs.";
+}
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
+export default function App() {
+  const [menu, setMenu] = useState(DEFAULT_MENU);
+  const [deliveryNote, setDeliveryNote] = useState(DEFAULT_DELIVERY_NOTE);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const [cart, setCart] = useState({});
+  const [cartOpen, setCartOpen] = useState(false);
+  const [openCat, setOpenCat] = useState("");
+  const [mode, setMode] = useState("retiro");
+  const [address, setAddress] = useState("");
+  const [notes, setNotes] = useState("");
+  const [mapLink, setMapLink] = useState("");
+  const [locStatus, setLocStatus] = useState("idle");
+
+  const [view, setView] = useState("menu");
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [draft, setDraft] = useState(null);
+  const [draftNote, setDraftNote] = useState(DEFAULT_DELIVERY_NOTE);
+  const [draftPin, setDraftPin] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+
+  // ---- Carga inicial desde Google Sheets ----
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(SHEETS_API_URL);
+        const data = await res.json();
+        if (data.menu && data.menu.length > 0) {
+          setMenu(data.menu);
+          setOpenCat(data.menu[0].category);
+        } else {
+          setOpenCat(DEFAULT_MENU[0].category);
+        }
+        if (data.deliveryNote) setDeliveryNote(data.deliveryNote);
+      } catch (err) {
+        setLoadError("No se pudo cargar el menú. Revisá tu conexión o la configuración de la planilla.");
+        setOpenCat(DEFAULT_MENU[0].category);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const allItems = useMemo(() => menu.flatMap((c) => c.items), [menu]);
+
+  useEffect(() => {
+    if (!loading && menu.length > 0 && !menu.some((c) => c.category === openCat)) {
+      setOpenCat(menu[0].category);
+    }
+  }, [menu, loading]);
+
+  // ---- Carrito ----
+  const addItem = (id) => setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));
+  const removeItem = (id) =>
+    setCart((c) => {
+      const next = { ...c };
+      if (!next[id]) return next;
+      next[id] -= 1;
+      if (next[id] <= 0) delete next[id];
+      return next;
+    });
+  const clearItem = (id) =>
+    setCart((c) => {
+      const next = { ...c };
+      delete next[id];
+      return next;
+    });
+
+  const cartLines = Object.entries(cart)
+    .map(([id, qty]) => {
+      const item = allItems.find((i) => i.id === id);
+      return item ? { ...item, qty } : null;
+    })
+    .filter(Boolean);
+
+  const totalQty = cartLines.reduce((s, l) => s + l.qty, 0);
+  const subtotal = cartLines.reduce((s, l) => s + l.qty * l.price, 0);
+  const totalPrice = subtotal;
+
+  const buildMessage = () => {
+    let msg = `¡Hola La Caserita! 👋 Quiero hacer este pedido:\n\n`;
+    cartLines.forEach((l) => {
+      msg += `• ${l.qty}x ${l.name} — ${formatGs(l.qty * l.price)}\n`;
+    });
+    msg += `\nSubtotal: ${formatGs(subtotal)}\n`;
+    msg += `Modalidad: ${mode === "retiro" ? "Retiro en el local" : "Delivery"}\n`;
+    if (mode === "delivery") {
+      if (mapLink) msg += `Ubicación (Google Maps): ${mapLink}\n`;
+      if (address.trim()) msg += `Dirección / referencia: ${address}\n`;
+      if (!mapLink && !address.trim()) msg += `Dirección de entrega: (especificar)\n`;
+      msg += `(${deliveryNote})\n`;
+    }
+    msg += `\nTotal (sin envío): ${formatGs(totalPrice)}\n`;
+    if (notes.trim()) msg += `Nota: ${notes.trim()}\n`;
+    return msg;
+  };
+
+  const shareLocation = () => {
+    if (!navigator.geolocation) {
+      setLocStatus("error");
+      return;
+    }
+    setLocStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        setMapLink(`https://www.google.com/maps?q=${latitude},${longitude}`);
+        setLocStatus("done");
+      },
+      () => setLocStatus("error"),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const sendOrder = () => {
+    const text = encodeURIComponent(buildMessage());
+    window.open(`https://wa.me/${PHONE_INTL}?text=${text}`, "_blank");
+  };
+
+  // ---- Administración ----
+  const saveMenu = async (nextMenu, nextNote, nextPin) => {
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          pin: pinInput || draftPin,
+          menu: nextMenu,
+          deliveryNote: nextNote,
+        }),
+      });
+      const result = await res.json();
+      if (!result.ok) throw new Error(result.error || "Error al guardar");
+      setMenu(nextMenu);
+      setDeliveryNote(nextNote);
+      setDirty(false);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1800);
+    } catch (err) {
+      setSaveError("No se pudo guardar. Revisá tu conexión o que el PIN sea correcto, y tocá Guardar de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const commitSave = () => {
+    if (!draft) return;
+    const sanitized = draft.map((c) => ({
+      ...c,
+      items: c.items.map((it) => ({ ...it, price: Number(it.price) || 0 })),
+    }));
+    saveMenu(sanitized, draftNote);
+  };
+
+  const enterAdmin = () => {
+    setDraft(JSON.parse(JSON.stringify(menu)));
+    setDraftNote(deliveryNote);
+    setDraftPin(pinInput);
+    setDirty(false);
+    setView("admin");
+  };
+
+  const updateItemField = (catIdx, itemIdx, field, value) => {
+    setDraft((d) =>
+      d.map((c, ci) =>
+        ci !== catIdx ? c : { ...c, items: c.items.map((it, ii) => (ii !== itemIdx ? it : { ...it, [field]: value })) }
+      )
+    );
+    setDirty(true);
+  };
+  const deleteItem = (catIdx, itemIdx) => {
+    setDraft((d) => d.map((c, ci) => (ci !== catIdx ? c : { ...c, items: c.items.filter((_, ii) => ii !== itemIdx) })));
+    setDirty(true);
+  };
+  const addItem2 = (catIdx) => {
+    setDraft((d) =>
+      d.map((c, ci) =>
+        ci !== catIdx ? c : { ...c, items: [...c.items, { id: uid(), name: "Nuevo producto", desc: "", price: "", image: "" }] }
+      )
+    );
+    setDirty(true);
+  };
+  const deleteCategory = (catIdx) => {
+    setDraft((d) => d.filter((_, ci) => ci !== catIdx));
+    setDirty(true);
+  };
+  const renameCategory = (catIdx, value) => {
+    setDraft((d) => d.map((c, ci) => (ci !== catIdx ? c : { ...c, category: value })));
+    setDirty(true);
+  };
+  const addCategory = () => {
+    setDraft((d) => [...d, { category: "Nueva categoría", items: [] }]);
+    setDirty(true);
+  };
+
+  if (loading) {
+    return (
+      <div style={{ background: BRAND.paper, minHeight: "100vh" }} className="flex items-center justify-center">
+        <LoaderCircle className="animate-spin" color={BRAND.tomato} size={32} />
+      </div>
+    );
+  }
+
+  if (view === "adminLogin") {
+    return (
+      <div style={{ background: BRAND.charcoal, minHeight: "100vh", fontFamily: "'Work Sans', sans-serif" }} className="flex items-center justify-center px-6">
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;600;700;800&display=swap'); .slab{font-family:'Alfa Slab One',serif;}`}</style>
+        <div className="w-full max-w-sm rounded-2xl p-6" style={{ background: BRAND.paper }}>
+          <button onClick={() => setView("menu")} className="flex items-center gap-1 text-sm font-bold mb-4" style={{ color: BRAND.charcoal }}>
+            <ArrowLeft size={16} /> Volver al menú
+          </button>
+          <div className="flex justify-center mb-3">
+            <div className="p-3 rounded-full" style={{ background: BRAND.tomato }}>
+              <Lock size={22} color={BRAND.cream} />
+            </div>
+          </div>
+          <h2 className="slab text-xl text-center mb-4" style={{ color: BRAND.charcoal }}>Acceso administrador</h2>
+          <input
+            type="password"
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+            placeholder="PIN"
+            className="w-full rounded-lg p-3 text-center text-lg border-2 tracking-widest"
+            style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+          />
+          <p className="text-xs mt-2 text-gray-500 text-center">
+            El PIN se valida en Google Sheets al momento de guardar
+          </p>
+          <button
+            onClick={enterAdmin}
+            className="w-full mt-4 rounded-xl p-3 font-bold"
+            style={{ background: BRAND.tomato, color: BRAND.cream }}
+          >
+            Ingresar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "admin" && draft) {
+    return (
+      <div style={{ background: BRAND.paper, minHeight: "100vh", fontFamily: "'Work Sans', sans-serif" }}>
+        <style>{`@import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;600;700;800&display=swap'); .slab{font-family:'Alfa Slab One',serif;}`}</style>
+        <div style={{ background: BRAND.charcoal }} className="px-5 py-4 sticky top-0 z-20 flex items-center justify-between">
+          <button
+            onClick={() => (dirty ? setShowExitConfirm(true) : setView("menu"))}
+            className="flex items-center gap-1 text-sm font-bold"
+            style={{ color: BRAND.cream }}
+          >
+            <ArrowLeft size={16} /> Volver
+          </button>
+          <h1 className="slab text-lg" style={{ color: BRAND.mustard }}>Administrar menú</h1>
+          <span className="text-xs" style={{ color: dirty ? BRAND.mustard : BRAND.green }}>
+            {dirty ? "Sin guardar" : "Al día"}
+          </span>
+        </div>
+
+        {showExitConfirm && (
+          <div className="fixed inset-0 z-40 flex items-center justify-center px-6" style={{ background: "rgba(0,0,0,0.55)" }}>
+            <div className="w-full max-w-sm rounded-2xl p-5" style={{ background: BRAND.cream }}>
+              <p className="font-bold text-base mb-1" style={{ color: BRAND.charcoal }}>Tenés cambios sin guardar</p>
+              <p className="text-sm text-gray-600 mb-4">Si salís ahora, vas a perder lo que modificaste. ¿Qué querés hacer?</p>
+              <div className="flex flex-col gap-2">
+                <button onClick={() => { setShowExitConfirm(false); commitSave(); setView("menu"); }} className="w-full rounded-lg p-3 text-sm font-semibold" style={{ background: BRAND.green, color: BRAND.cream }}>
+                  Guardar y salir
+                </button>
+                <button onClick={() => { setShowExitConfirm(false); setView("menu"); }} className="w-full rounded-lg p-3 text-sm font-semibold" style={{ background: BRAND.tomato, color: BRAND.cream }}>
+                  Salir sin guardar
+                </button>
+                <button onClick={() => setShowExitConfirm(false)} className="w-full rounded-lg p-3 text-sm font-semibold border-2" style={{ borderColor: BRAND.paperDark, color: BRAND.charcoal }}>
+                  Seguir editando
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="px-4 py-5 max-w-xl mx-auto pb-28">
+          <div className="mb-4 rounded-lg p-3 flex items-start gap-2" style={{ background: "#FFF3C4", border: `1px solid ${BRAND.mustard}` }}>
+            <span className="text-lg">💡</span>
+            <p className="text-xs" style={{ color: BRAND.charcoal }}>
+              Después de editar, tocá <b>"Guardar cambios"</b> abajo de todo. Las fotos van como <b>link de imagen</b>
+              (subí la foto a Google Drive u otro servicio, copiá el link público y pegalo acá).
+            </p>
+          </div>
+
+          <div className="mb-6 rounded-xl p-4 border-2" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+            <p className="font-bold text-sm mb-1" style={{ color: BRAND.charcoal }}>Mensaje sobre el envío (delivery)</p>
+            <input
+              value={draftNote}
+              onChange={(e) => { setDraftNote(e.target.value); setDirty(true); }}
+              className="w-full rounded p-2 text-sm border-2"
+              style={{ borderColor: BRAND.paperDark }}
+            />
+          </div>
+
+          {draft.map((c, catIdx) => (
+            <div key={catIdx} className="mb-6 rounded-xl p-4 border-2" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  value={c.category}
+                  onChange={(e) => renameCategory(catIdx, e.target.value)}
+                  className="slab flex-1 text-lg bg-transparent border-b-2 pb-1"
+                  style={{ color: BRAND.tomato, borderColor: BRAND.paperDark }}
+                />
+                <button onClick={() => deleteCategory(catIdx)} className="p-2 rounded-lg" style={{ background: BRAND.tomato }}>
+                  <Trash2 size={14} color={BRAND.cream} />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {c.items.map((item, itemIdx) => (
+                  <div key={item.id} className="rounded-lg p-3 flex gap-3" style={{ background: BRAND.paper }}>
+                    <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 flex items-center justify-center" style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}>
+                      {item.image ? (
+                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon size={18} color={BRAND.tomatoDark} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex gap-2 items-center mb-2">
+                        <input
+                          value={item.name}
+                          onChange={(e) => updateItemField(catIdx, itemIdx, "name", e.target.value)}
+                          placeholder="Nombre del producto"
+                          className="flex-1 rounded p-2 text-sm font-bold border"
+                          style={{ borderColor: BRAND.paperDark }}
+                        />
+                        <button onClick={() => deleteItem(catIdx, itemIdx)} className="p-2 rounded" style={{ background: BRAND.tomato }}>
+                          <Trash2 size={13} color={BRAND.cream} />
+                        </button>
+                      </div>
+                      <div className="flex gap-2 mb-2">
+                        <input
+                          value={item.desc}
+                          onChange={(e) => updateItemField(catIdx, itemIdx, "desc", e.target.value)}
+                          placeholder="Descripción (opcional)"
+                          className="flex-1 rounded p-2 text-xs border"
+                          style={{ borderColor: BRAND.paperDark }}
+                        />
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatPriceInput(item.price)}
+                          onChange={(e) => {
+                            const digits = e.target.value.replace(/[^\d]/g, "");
+                            updateItemField(catIdx, itemIdx, "price", digits === "" ? "" : Number(digits));
+                          }}
+                          placeholder="0 Gs."
+                          className="w-28 rounded p-2 text-xs border text-right"
+                          style={{ borderColor: BRAND.paperDark }}
+                        />
+                      </div>
+                      <input
+                        value={item.image || ""}
+                        onChange={(e) => updateItemField(catIdx, itemIdx, "image", e.target.value)}
+                        placeholder="Link de la foto (opcional)"
+                        className="w-full rounded p-2 text-xs border"
+                        style={{ borderColor: BRAND.paperDark }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => addItem2(catIdx)}
+                className="w-full mt-3 rounded-lg p-2 text-sm font-bold flex items-center justify-center gap-1"
+                style={{ background: BRAND.mustard, color: BRAND.charcoal }}
+              >
+                <Plus size={14} /> Agregar producto en {c.category}
+              </button>
+            </div>
+          ))}
+
+          <button
+            onClick={addCategory}
+            className="w-full rounded-xl p-3 font-bold flex items-center justify-center gap-2"
+            style={{ background: BRAND.green, color: BRAND.cream }}
+          >
+            <Plus size={16} /> Nueva categoría
+          </button>
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 p-4" style={{ background: BRAND.charcoal }}>
+          {saveError && (
+            <p className="text-xs mb-2 text-center max-w-xl mx-auto" style={{ color: BRAND.mustard }}>⚠️ {saveError}</p>
+          )}
+          <button
+            onClick={commitSave}
+            disabled={!dirty || saving}
+            className="w-full max-w-xl mx-auto flex items-center justify-center gap-2 rounded-xl p-4 font-semibold text-base disabled:opacity-50"
+            style={{ background: savedFlash ? BRAND.green : BRAND.tomato, color: BRAND.cream }}
+          >
+            {saving ? (<><LoaderCircle className="animate-spin" size={18} /> Guardando...</>) :
+              savedFlash ? (<>✓ Cambios guardados</>) :
+              (<><Save size={18} /> Guardar cambios</>)}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: BRAND.paper, minHeight: "100vh", fontFamily: "'Work Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Caveat:wght@600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap');
+        .slab { font-family: 'Alfa Slab One', serif; }
+        .hand { font-family: 'Caveat', cursive; }
+      `}</style>
+
+      {loadError && (
+        <p className="text-xs text-center py-2" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>⚠️ {loadError}</p>
+      )}
+
+      <img src="/banner.jpg" alt="La Caserita" className="w-full block" />
+
+      <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg">
+        <div className="flex items-center justify-between px-5 py-3 gap-3">
+          <p className="hand text-2xl" style={{ color: BRAND.mustard }}>Pedí online</p>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1">
+              <span className="hand text-lg text-right leading-tight hidden sm:block" style={{ color: "#FFD600", maxWidth: 160 }}>
+                Seleccione los productos y confirme en el carrito
+              </span>
+              <span className="hidden sm:block text-2xl">👉</span>
+              <button onClick={() => setCartOpen(true)} className="relative p-3 rounded-full flex-shrink-0" style={{ background: BRAND.tomato }}>
+                <ShoppingCart size={22} color={BRAND.cream} />
+                {totalQty > 0 && (
+                  <span className="absolute -top-1 -right-1 rounded-full text-xs font-bold flex items-center justify-center" style={{ background: BRAND.mustard, color: BRAND.charcoal, width: 20, height: 20 }}>
+                    {totalQty}
+                  </span>
+                )}
+              </button>
+            </div>
+            <button onClick={() => setView("adminLogin")} className="p-3 rounded-full flex-shrink-0" style={{ background: BRAND.paperDark }} title="Administrar menú">
+              <Settings size={20} color={BRAND.charcoal} />
+            </button>
+          </div>
+        </div>
+        <p className="hand text-base text-center pb-2 sm:hidden flex items-center justify-center gap-1" style={{ color: "#FFD600" }}>
+          Seleccione los productos y confirme en el carrito <span className="text-xl">👇</span>
+        </p>
+      </div>
+
+      <div className="flex gap-2 overflow-x-auto px-4 py-3" style={{ background: BRAND.paperDark }}>
+        {menu.map((c) => (
+          <button
+            key={c.category}
+            onClick={() => setOpenCat(c.category)}
+            className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2"
+            style={openCat === c.category
+              ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
+              : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.charcoal }}
+          >
+            {c.category}
+          </button>
+        ))}
+      </div>
+
+      <div className="px-4 py-5 pb-28 max-w-xl mx-auto">
+        {menu.filter((c) => c.category === openCat).map((c) => (
+          <div key={c.category}>
+            <h2 className="slab text-xl mb-3" style={{ color: BRAND.tomato }}>{c.category}</h2>
+            <div className="flex flex-col gap-3">
+              {c.items.map((item) => {
+                const qty = cart[item.id] || 0;
+                return (
+                  <div key={item.id} className="rounded-xl border-2 p-4 flex items-center gap-3" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+                    {item.image && (
+                      <img src={item.image} alt={item.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-base" style={{ color: BRAND.charcoal }}>{item.name}</p>
+                      {item.desc && <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>}
+                      <p className="font-bold mt-1" style={{ color: BRAND.green }}>{formatGs(item.price)}</p>
+                    </div>
+                    {qty === 0 ? (
+                      <button onClick={() => addItem(item.id)} className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>
+                        <Plus size={16} /> Agregar
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 rounded-lg px-2 py-1" style={{ background: BRAND.paperDark }}>
+                        <button onClick={() => removeItem(item.id)} className="p-1.5 rounded" style={{ background: BRAND.charcoal }}>
+                          <Minus size={14} color={BRAND.cream} />
+                        </button>
+                        <span className="font-bold w-5 text-center" style={{ color: BRAND.charcoal }}>{qty}</span>
+                        <button onClick={() => addItem(item.id)} className="p-1.5 rounded" style={{ background: BRAND.charcoal }}>
+                          <Plus size={14} color={BRAND.cream} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {totalQty > 0 && !cartOpen && (
+        <button onClick={() => setCartOpen(true)} className="fixed bottom-4 left-4 right-4 max-w-xl mx-auto rounded-xl p-4 flex items-center justify-between shadow-2xl" style={{ background: BRAND.tomato }}>
+          <span className="font-bold flex items-center gap-2" style={{ color: BRAND.cream }}>
+            <ShoppingCart size={18} /> {totalQty} {totalQty === 1 ? "producto" : "productos"}
+          </span>
+          <span className="slab text-lg" style={{ color: BRAND.cream }}>{formatGs(totalPrice)}</span>
+        </button>
+      )}
+
+      {cartOpen && (
+        <div className="fixed inset-0 z-30 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
+          <div className="w-full max-w-xl rounded-t-2xl max-h-[88vh] overflow-y-auto" style={{ background: BRAND.paper }}>
+            <div className="sticky top-0 flex items-center justify-between px-5 py-4" style={{ background: BRAND.charcoal }}>
+              <h2 className="slab text-xl" style={{ color: BRAND.cream }}>Tu pedido</h2>
+              <button onClick={() => setCartOpen(false)} className="flex items-center gap-1 px-3 py-2 rounded-full text-sm font-bold" style={{ background: BRAND.tomato, color: BRAND.cream }}>
+                <X size={16} /> Cerrar
+              </button>
+            </div>
+
+            <div className="px-5 py-4">
+              <button onClick={() => setCartOpen(false)} className="w-full mb-4 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={{ borderColor: BRAND.green, color: BRAND.green, background: "transparent" }}>
+                <ArrowLeft size={16} /> Seguir pidiendo del menú
+              </button>
+
+              {cartLines.length === 0 ? (
+                <p className="text-center py-10 text-gray-500">Todavía no agregaste nada del menú.</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {cartLines.map((l) => (
+                    <div key={l.id} className="flex items-center justify-between rounded-lg p-3" style={{ background: BRAND.cream }}>
+                      <div className="flex-1">
+                        <p className="font-bold text-sm" style={{ color: BRAND.charcoal }}>{l.qty}x {l.name}</p>
+                        <p className="text-xs" style={{ color: BRAND.green }}>{formatGs(l.qty * l.price)}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => removeItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.paperDark }}><Minus size={14} color={BRAND.charcoal} /></button>
+                        <button onClick={() => addItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.paperDark }}><Plus size={14} color={BRAND.charcoal} /></button>
+                        <button onClick={() => clearItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.tomato }}><Trash2 size={14} color={BRAND.cream} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {cartLines.length > 0 && (
+                <>
+                  <div className="flex gap-2 mt-4">
+                    <button onClick={() => setMode("retiro")} className="flex-1 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={mode === "retiro" ? { background: BRAND.green, color: BRAND.cream, borderColor: BRAND.green } : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.paperDark }}>
+                      <Store size={16} /> Retiro
+                    </button>
+                    <button onClick={() => setMode("delivery")} className="flex-1 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={mode === "delivery" ? { background: BRAND.green, color: BRAND.cream, borderColor: BRAND.green } : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.paperDark }}>
+                      <MapPin size={16} /> Delivery
+                    </button>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t-2 flex flex-col gap-1" style={{ borderColor: BRAND.paperDark }}>
+                    <div className="flex justify-between items-center">
+                      <span className="font-bold" style={{ color: BRAND.charcoal }}>Total</span>
+                      <span className="slab text-2xl" style={{ color: BRAND.tomato }}>{formatGs(totalPrice)}</span>
+                    </div>
+                    {mode === "delivery" && (
+                      <p className="text-xs mt-1" style={{ color: BRAND.tomatoDark }}>+ envío: {deliveryNote}</p>
+                    )}
+                  </div>
+
+                  {mode === "retiro" ? (
+                    <p className="text-xs mt-2 text-gray-500 flex items-center gap-1"><MapPin size={12} /> {ADDRESS}</p>
+                  ) : (
+                    <div className="mt-3">
+                      {mapLink ? (
+                        <div className="flex items-center justify-between rounded-lg p-3 mb-2" style={{ background: "#DFF3E4" }}>
+                          <span className="text-sm font-bold flex items-center gap-2" style={{ color: BRAND.green }}><CheckCircle2 size={16} /> Ubicación compartida</span>
+                          <button onClick={shareLocation} className="text-xs font-bold underline" style={{ color: BRAND.green }}>Actualizar</button>
+                        </div>
+                      ) : (
+                        <button onClick={shareLocation} disabled={locStatus === "loading"} className="w-full rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={{ borderColor: BRAND.green, color: BRAND.green, background: "transparent" }}>
+                          {locStatus === "loading" ? (<><LoaderCircle className="animate-spin" size={16} /> Obteniendo ubicación...</>) : (<><Navigation size={16} /> Usar mi ubicación actual (Google Maps)</>)}
+                        </button>
+                      )}
+                      {locStatus === "error" && (
+                        <p className="text-xs mt-1" style={{ color: BRAND.tomato }}>No pudimos obtener tu ubicación. Escribí la dirección abajo.</p>
+                      )}
+                      <input
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder={mapLink ? "Referencia (casa, portón, piso, etc.) - opcional" : "O escribí tu dirección de entrega"}
+                        className="w-full mt-2 rounded-lg p-3 text-sm border-2"
+                        style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+                      />
+                    </div>
+                  )}
+
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Notas (ej: sin lechuga, punto de cocción, etc.)"
+                    rows={2}
+                    className="w-full mt-3 rounded-lg p-3 text-sm border-2"
+                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+                  />
+
+                  <button
+                    onClick={sendOrder}
+                    disabled={mode === "delivery" && !address.trim() && !mapLink}
+                    className="w-full mt-4 rounded-xl p-4 flex items-center justify-center gap-2 font-bold slab text-lg disabled:opacity-50"
+                    style={{ background: "#25D366", color: "#0b3d1f" }}
+                  >
+                    <Send size={18} /> Enviar pedido por WhatsApp
+                  </button>
+                  <p className="text-xs text-center mt-2 text-gray-500">Se abre WhatsApp al {PHONE_DISPLAY} con tu pedido listo para confirmar</p>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
