@@ -48,6 +48,35 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+function compressImage(file, maxSize = 320, quality = 0.62) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("No se pudo procesar la imagen"));
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > height && width > maxSize) {
+          height = Math.round((height * maxSize) / width);
+          width = maxSize;
+        } else if (height > maxSize) {
+          width = Math.round((width * maxSize) / height);
+          height = maxSize;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function App() {
   const [menu, setMenu] = useState(DEFAULT_MENU);
   const [deliveryNote, setDeliveryNote] = useState(DEFAULT_DELIVERY_NOTE);
@@ -255,6 +284,24 @@ export default function App() {
     setDirty(true);
   };
 
+  const [imgLoading, setImgLoading] = useState(null);
+  const [imgError, setImgError] = useState("");
+
+  const handleImageUpload = async (catIdx, itemIdx, file) => {
+    if (!file) return;
+    const itemId = draft[catIdx].items[itemIdx].id;
+    setImgLoading(itemId);
+    setImgError("");
+    try {
+      const dataUrl = await compressImage(file);
+      updateItemField(catIdx, itemIdx, "image", dataUrl);
+    } catch {
+      setImgError("No se pudo procesar esa imagen. Probá con otra foto.");
+    } finally {
+      setImgLoading(null);
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ background: BRAND.paper, minHeight: "100vh" }} className="flex items-center justify-center">
@@ -279,6 +326,7 @@ export default function App() {
           <h2 className="slab text-xl text-center mb-4" style={{ color: BRAND.charcoal }}>Acceso administrador</h2>
           <input
             type="password"
+            autoComplete="off"
             value={pinInput}
             onChange={(e) => setPinInput(e.target.value)}
             placeholder="PIN"
@@ -374,13 +422,34 @@ export default function App() {
               <div className="flex flex-col gap-2">
                 {c.items.map((item, itemIdx) => (
                   <div key={item.id} className="rounded-lg p-3 flex gap-3" style={{ background: BRAND.paper }}>
-                    <div className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 flex items-center justify-center" style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}>
-                      {item.image ? (
+                    <label
+                      className="relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 flex items-center justify-center cursor-pointer"
+                      style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+                    >
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => handleImageUpload(catIdx, itemIdx, e.target.files?.[0])}
+                      />
+                      {imgLoading === item.id ? (
+                        <LoaderCircle className="animate-spin" size={18} color={BRAND.tomato} />
+                      ) : item.image ? (
                         <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
                       ) : (
                         <ImageIcon size={18} color={BRAND.tomatoDark} />
                       )}
-                    </div>
+                      {item.image && imgLoading !== item.id && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); updateItemField(catIdx, itemIdx, "image", ""); }}
+                          className="absolute top-0.5 right-0.5 rounded-full p-0.5"
+                          style={{ background: BRAND.tomato }}
+                        >
+                          <X size={10} color={BRAND.cream} />
+                        </button>
+                      )}
+                    </label>
                     <div className="flex-1 min-w-0">
                       <div className="flex gap-2 items-center mb-2">
                         <input
@@ -416,9 +485,9 @@ export default function App() {
                         />
                       </div>
                       <input
-                        value={item.image || ""}
+                        value={item.image && item.image.startsWith("data:") ? "" : (item.image || "")}
                         onChange={(e) => updateItemField(catIdx, itemIdx, "image", e.target.value)}
-                        placeholder="Link de la foto (opcional)"
+                        placeholder={item.image && item.image.startsWith("data:") ? "Foto subida ✓ (o pegá un link para reemplazarla)" : "O pegá un link de foto (opcional)"}
                         className="w-full rounded p-2 text-xs border"
                         style={{ borderColor: BRAND.paperDark }}
                       />
@@ -426,6 +495,10 @@ export default function App() {
                   </div>
                 ))}
               </div>
+
+              {imgError && (
+                <p className="text-xs mt-2" style={{ color: BRAND.tomato }}>⚠️ {imgError}</p>
+              )}
 
               <button
                 onClick={() => addItem2(catIdx)}
@@ -497,7 +570,7 @@ export default function App() {
                 )}
               </button>
             </div>
-            <button onClick={() => setView("adminLogin")} className="p-3 rounded-full flex-shrink-0" style={{ background: BRAND.paperDark }} title="Administrar menú">
+            <button onClick={() => { setPinInput(""); setPinError(""); setView("adminLogin"); }} className="p-3 rounded-full flex-shrink-0" style={{ background: BRAND.paperDark }} title="Administrar menú">
               <Settings size={20} color={BRAND.charcoal} />
             </button>
           </div>
