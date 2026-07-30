@@ -43,7 +43,7 @@ export default async function handler(req, res) {
 
   if (req.method === "POST") {
     try {
-      const body = req.body;
+      const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
       const savedPinRows = await sql`SELECT value FROM config WHERE key = 'pin'`;
       const savedPin = savedPinRows[0]?.value;
 
