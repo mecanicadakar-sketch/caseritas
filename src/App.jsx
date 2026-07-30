@@ -180,6 +180,7 @@ export default function App() {
     try {
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           pin: pinInput || draftPin,
           menu: nextMenu,
@@ -187,7 +188,11 @@ export default function App() {
         }),
       });
       const result = await res.json();
-      if (!result.ok) throw new Error(result.error || "Error al guardar");
+      if (!result.ok) {
+        setSaveError(result.error === "PIN incorrecto" ? "PIN incorrecto. Revisalo y probá de nuevo." : (result.error || "Error al guardar"));
+        setSaving(false);
+        return;
+      }
       setMenu(nextMenu);
       setDeliveryNote(nextNote);
       setDirty(false);
