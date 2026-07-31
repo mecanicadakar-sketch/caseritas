@@ -165,11 +165,10 @@ export default function App() {
   // Estilo de Fondo Corregido: Una sola imagen adaptada al centro sin repetirse en mosaico
   const pageBackgroundStyle = {
     backgroundImage: `url('/fondocaserita.png')`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center center',
-    backgroundRepeat: 'no-repeat',
+    backgroundSize: '350px auto', // Controla exactamente el tamaño del patrón
+    backgroundPosition: 'center top',
+    backgroundRepeat: 'repeat',
     backgroundAttachment: 'fixed',
-    backgroundColor: BRAND.paper,
     minHeight: '100vh',
     width: '100%',
   };
