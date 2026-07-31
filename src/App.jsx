@@ -165,7 +165,7 @@ export default function App() {
   // Estilo de Fondo Corregido: Una sola imagen adaptada al centro sin repetirse en mosaico
   const pageBackgroundStyle = {
     backgroundImage: `url('/fondocaserita.png')`,
-    backgroundSize: '350px auto', // Controla exactamente el tamaño del patrón
+    backgroundSize: 'contain', // Controla exactamente el tamaño del patrón
     backgroundPosition: 'center top',
     backgroundRepeat: 'repeat',
     backgroundAttachment: 'fixed',
