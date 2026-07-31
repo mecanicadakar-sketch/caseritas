@@ -686,8 +686,11 @@ export default function App() {
         <p className="text-xs text-center py-2" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>⚠️ {loadError}</p>
       )}
 
-      <img src="/banner.jpg" alt="La Caserita" className="w-full block" />
-
+      <img 
+  src="/banner.jpg" 
+  alt="La Caserita" 
+  className="w-full max-w-xl mx-auto block object-contain" 
+/>
       <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg">
         <div className="flex items-center justify-between px-5 py-3 gap-3">
           <p className="hand text-2xl" style={{ color: BRAND.mustard }}>Pedí online</p>
