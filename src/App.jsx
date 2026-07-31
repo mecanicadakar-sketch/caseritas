@@ -680,9 +680,13 @@ export default function App() {
         <p className="text-xs text-center py-2" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>⚠️ {loadError}</p>
       )}
 
-      {/* Contenedor del banner con fondo oscuro para PC */}
+      {/* Contenedor del banner */}
       <div style={{ background: BRAND.charcoal }} className="w-full flex justify-center">
-        <img src="/banner.jpg" alt="La Caserita" className="w-full block" />
+        <img 
+          src="/banner.jpg" 
+          alt="La Caserita" 
+          className="w-full max-w-xl block object-cover" 
+        />
       </div>
 
       <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg">
