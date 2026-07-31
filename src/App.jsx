@@ -165,11 +165,11 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
   // Estilo para la imagen de fondo de pantalla
-  const pageBackgroundStyle = {
+ const pageBackgroundStyle = {
     backgroundImage: `url('/fondocaserita.png')`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat',
+    backgroundSize: '350px auto', // Controla exactamente el tamaño del patrón
+    backgroundPosition: 'center top',
+    backgroundRepeat: 'repeat',
     backgroundAttachment: 'fixed',
     minHeight: '100vh',
     width: '100%',
