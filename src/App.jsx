@@ -151,6 +151,7 @@ export default function App() {
   const [locStatus, setLocStatus] = useState("idle");
 
   const [view, setView] = useState("menu");
+  const [userInput, setUserInput] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -158,6 +159,7 @@ export default function App() {
   const [draft, setDraft] = useState(null);
   const [draftNote, setDraftNote] = useState(DEFAULT_DELIVERY_NOTE);
   const [draftPin, setDraftPin] = useState("");
+  const [draftUser, setDraftUser] = useState("");
   const [dirty, setDirty] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
@@ -269,6 +271,7 @@ export default function App() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          user: userInput || draftUser,
           pin: pinInput || draftPin,
           menu: nextMenu,
           deliveryNote: nextNote,
@@ -276,7 +279,7 @@ export default function App() {
       });
       const result = await res.json();
       if (!result.ok) {
-        setSaveError(result.error === "PIN incorrecto" ? "PIN incorrecto. Revisalo y probá de nuevo." : (result.error || "Error al guardar"));
+        setSaveError(result.error || "Error al guardar");
         setSaving(false);
         return;
       }
@@ -286,7 +289,7 @@ export default function App() {
       setSavedFlash(true);
       setTimeout(() => setSavedFlash(false), 1800);
     } catch (err) {
-      setSaveError("No se pudo guardar. Revisá tu conexión o que el PIN sea correcto, y tocá Guardar de nuevo.");
+      setSaveError("No se pudo guardar. Revisá tu conexión, y tocá Guardar de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -301,12 +304,41 @@ export default function App() {
     saveMenu(sanitized, draftNote);
   };
 
+  const [verifying, setVerifying] = useState(false);
+
   const enterAdmin = () => {
     setDraft(JSON.parse(JSON.stringify(menu)));
     setDraftNote(deliveryNote);
     setDraftPin(pinInput);
+    setDraftUser(userInput);
     setDirty(false);
     setView("admin");
+  };
+
+  const checkPinAndEnter = async () => {
+    if (!userInput.trim() || !pinInput.trim()) {
+      setPinError("Completá usuario y PIN");
+      return;
+    }
+    setVerifying(true);
+    setPinError("");
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user: userInput, pin: pinInput, action: "verifyPin" }),
+      });
+      const result = await res.json();
+      if (result.ok) {
+        enterAdmin();
+      } else {
+        setPinError("Usuario o PIN incorrecto");
+      }
+    } catch {
+      setPinError("No se pudo verificar. Revisá tu conexión.");
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const updateItemField = (catIdx, itemIdx, field, value) => {
@@ -387,6 +419,15 @@ export default function App() {
           </div>
           <h2 className="slab text-xl text-center mb-4" style={{ color: BRAND.charcoal }}>Acceso administrador</h2>
           <input
+            type="text"
+            autoComplete="off"
+            value={userInput}
+            onChange={(e) => setUserInput(e.target.value)}
+            placeholder="Usuario"
+            className="w-full rounded-lg p-3 text-center text-lg border-2 mb-3"
+            style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+          />
+          <input
             type="password"
             autoComplete="off"
             value={pinInput}
@@ -395,15 +436,16 @@ export default function App() {
             className="w-full rounded-lg p-3 text-center text-lg border-2 tracking-widest"
             style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
           />
-          <p className="text-xs mt-2 text-gray-500 text-center">
-            El PIN se valida en Google Sheets al momento de guardar
-          </p>
+          {pinError && (
+            <p className="text-xs mt-2 text-center font-bold" style={{ color: BRAND.tomato }}>⚠️ {pinError}</p>
+          )}
           <button
-            onClick={enterAdmin}
-            className="w-full mt-4 rounded-xl p-3 font-bold"
+            onClick={checkPinAndEnter}
+            disabled={verifying}
+            className="w-full mt-4 rounded-xl p-3 font-bold flex items-center justify-center gap-2 disabled:opacity-60"
             style={{ background: BRAND.tomato, color: BRAND.cream }}
           >
-            Ingresar
+            {verifying ? (<><LoaderCircle className="animate-spin" size={18} /> Verificando...</>) : "Ingresar"}
           </button>
         </div>
       </div>
@@ -653,7 +695,7 @@ export default function App() {
                 )}
               </button>
             </div>
-            <button onClick={() => { setPinInput(""); setPinError(""); setView("adminLogin"); }} className="p-3 rounded-full flex-shrink-0" style={{ background: BRAND.paperDark }} title="Administrar menú">
+            <button onClick={() => { setUserInput(""); setPinInput(""); setPinError(""); setView("adminLogin"); }} className="p-3 rounded-full flex-shrink-0" style={{ background: BRAND.paperDark }} title="Administrar menú">
               <Settings size={20} color={BRAND.charcoal} />
             </button>
           </div>
