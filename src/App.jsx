@@ -166,7 +166,7 @@ export default function App() {
   const pageBackgroundStyle = {
     backgroundImage: `url('/fondocaserita.png')`,
     backgroundSize: 'contain', // Controla exactamente el tamaño del patrón
-    backgroundPosition: 'center top',
+    backgroundPosition: 'top center',
     backgroundRepeat: 'repeat',
     backgroundAttachment: 'fixed',
     minHeight: '100vh',
