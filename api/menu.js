@@ -44,11 +44,21 @@ export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
-      const savedPinRows = await sql`SELECT value FROM config WHERE key = 'pin'`;
-      const savedPin = savedPinRows[0]?.value;
+      const configRows = await sql`SELECT key, value FROM config WHERE key IN ('admin_user', 'pin')`;
+      const config = Object.fromEntries(configRows.map((r) => [r.key, r.value]));
 
-      if (String(body.pin) !== String(savedPin)) {
-        res.status(401).json({ ok: false, error: "PIN incorrecto" });
+      const userOk = String(body.user || "").trim().toLowerCase() === String(config.admin_user || "").trim().toLowerCase();
+      const pinOk = String(body.pin) === String(config.pin);
+
+      if (!userOk || !pinOk) {
+        res.status(401).json({ ok: false, error: "Usuario o PIN incorrecto" });
+        return;
+      }
+
+      // Si solo quiere verificar credenciales (por ejemplo, al entrar al panel),
+      // no toca ningún dato, solo confirma que son correctas.
+      if (body.action === "verifyPin") {
+        res.status(200).json({ ok: true });
         return;
       }
 
