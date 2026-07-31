@@ -164,6 +164,17 @@ export default function App() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
+  // Estilo para la imagen de fondo de pantalla
+  const pageBackgroundStyle = {
+    backgroundImage: `url('/fondocaserita.png')`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundRepeat: 'no-repeat',
+    backgroundAttachment: 'fixed',
+    minHeight: '100vh',
+    width: '100%',
+  };
+
   // ---- Carga inicial desde Google Sheets ----
   useEffect(() => {
     (async () => {
@@ -664,7 +675,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ background: BRAND.paper, minHeight: "100vh", fontFamily: "'Work Sans', sans-serif" }}>
+    <div style={pageBackgroundStyle} className="min-h-screen font-sans">
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Caveat:wght@600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap');
         .slab { font-family: 'Alfa Slab One', serif; }
@@ -721,159 +732,154 @@ export default function App() {
         ))}
       </div>
 
-      <div className="px-4 py-5 pb-28 max-w-xl mx-auto">
-        {menu.filter((c) => c.category === openCat).map((c) => (
-          <div key={c.category}>
-            <h2 className="slab text-xl mb-3" style={{ color: BRAND.tomato }}>{c.category}</h2>
-            <div className="flex flex-col gap-3">
+      {/* Menú de Productos */}
+      <div className="p-4 max-w-xl mx-auto pb-24">
+        {menu
+          .filter((c) => c.category === openCat)
+          .map((c) => (
+            <div key={c.category} className="flex flex-col gap-3">
               {c.items.map((item) => {
                 const qty = cart[item.id] || 0;
                 return (
-                  <div key={item.id} className="rounded-xl border-2 p-4 flex items-center gap-3" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+                  <div key={item.id} className="rounded-xl p-3 flex gap-3 shadow-md border" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
                     {item.image && (
-                      <img src={item.image} alt={item.name} className="w-16 h-16 rounded-lg object-cover flex-shrink-0" />
+                      <img src={item.image} alt={item.name} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" />
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-base" style={{ color: BRAND.charcoal }}>{item.name}</p>
-                      {item.desc && <p className="text-xs text-gray-500 mt-0.5">{item.desc}</p>}
-                      <p className="font-bold mt-1" style={{ color: BRAND.green }}>{formatGs(item.price)}</p>
-                    </div>
-                    {qty === 0 ? (
-                      <button onClick={() => addItem(item.id)} className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-1" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>
-                        <Plus size={16} /> Agregar
-                      </button>
-                    ) : (
-                      <div className="flex items-center gap-2 rounded-lg px-2 py-1" style={{ background: BRAND.paperDark }}>
-                        <button onClick={() => removeItem(item.id)} className="p-1.5 rounded" style={{ background: BRAND.charcoal }}>
-                          <Minus size={14} color={BRAND.cream} />
-                        </button>
-                        <span className="font-bold w-5 text-center" style={{ color: BRAND.charcoal }}>{qty}</span>
-                        <button onClick={() => addItem(item.id)} className="p-1.5 rounded" style={{ background: BRAND.charcoal }}>
-                          <Plus size={14} color={BRAND.cream} />
-                        </button>
+                    <div className="flex-1 min-w-0 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-bold text-base leading-snug" style={{ color: BRAND.charcoal }}>{item.name}</h3>
+                        {item.desc && <p className="text-xs text-gray-600 line-clamp-2 mt-0.5">{item.desc}</p>}
                       </div>
-                    )}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="font-extrabold text-sm" style={{ color: BRAND.tomato }}>{formatGs(item.price)}</span>
+                        <div className="flex items-center gap-2">
+                          {qty > 0 && (
+                            <>
+                              <button onClick={() => removeItem(item.id)} className="p-1 rounded-full" style={{ background: BRAND.paperDark, color: BRAND.charcoal }}>
+                                <Minus size={16} />
+                              </button>
+                              <span className="font-bold text-sm min-w-[16px] text-center">{qty}</span>
+                            </>
+                          )}
+                          <button onClick={() => addItem(item.id)} className="p-1 rounded-full" style={{ background: BRAND.tomato, color: BRAND.cream }}>
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
-      {totalQty > 0 && !cartOpen && (
-        <button onClick={() => setCartOpen(true)} className="fixed bottom-4 left-4 right-4 max-w-xl mx-auto rounded-xl p-4 flex items-center justify-between shadow-2xl" style={{ background: BRAND.tomato }}>
-          <span className="font-bold flex items-center gap-2" style={{ color: BRAND.cream }}>
-            <ShoppingCart size={18} /> {totalQty} {totalQty === 1 ? "producto" : "productos"}
-          </span>
-          <span className="slab text-lg" style={{ color: BRAND.cream }}>{formatGs(totalPrice)}</span>
-        </button>
-      )}
-
+      {/* Modal Carrito */}
       {cartOpen && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center" style={{ background: "rgba(0,0,0,0.5)" }}>
-          <div className="w-full max-w-xl rounded-t-2xl max-h-[88vh] overflow-y-auto" style={{ background: BRAND.paper }}>
-            <div className="sticky top-0 flex items-center justify-between px-5 py-4" style={{ background: BRAND.charcoal }}>
-              <h2 className="slab text-xl" style={{ color: BRAND.cream }}>Tu pedido</h2>
-              <button onClick={() => setCartOpen(false)} className="flex items-center gap-1 px-3 py-2 rounded-full text-sm font-bold" style={{ background: BRAND.tomato, color: BRAND.cream }}>
-                <X size={16} /> Cerrar
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: "rgba(0,0,0,0.6)" }}>
+          <div className="w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-5 max-h-[90vh] overflow-y-auto flex flex-col" style={{ background: BRAND.paper }}>
+            <div className="flex items-center justify-between pb-3 border-b mb-4" style={{ borderColor: BRAND.paperDark }}>
+              <h2 className="slab text-xl" style={{ color: BRAND.charcoal }}>Tu Pedido</h2>
+              <button onClick={() => setCartOpen(false)} className="p-1 rounded-full" style={{ background: BRAND.paperDark }}>
+                <X size={20} color={BRAND.charcoal} />
               </button>
             </div>
 
-            <div className="px-5 py-4">
-              <button onClick={() => setCartOpen(false)} className="w-full mb-4 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={{ borderColor: BRAND.green, color: BRAND.green, background: "transparent" }}>
-                <ArrowLeft size={16} /> Seguir pidiendo del menú
-              </button>
-
-              {cartLines.length === 0 ? (
-                <p className="text-center py-10 text-gray-500">Todavía no agregaste nada del menú.</p>
-              ) : (
-                <div className="flex flex-col gap-3">
+            {cartLines.length === 0 ? (
+              <p className="text-center py-8 text-gray-600">El carrito está vacío</p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-3 mb-4">
                   {cartLines.map((l) => (
-                    <div key={l.id} className="flex items-center justify-between rounded-lg p-3" style={{ background: BRAND.cream }}>
-                      <div className="flex-1">
-                        <p className="font-bold text-sm" style={{ color: BRAND.charcoal }}>{l.qty}x {l.name}</p>
-                        <p className="text-xs" style={{ color: BRAND.green }}>{formatGs(l.qty * l.price)}</p>
+                    <div key={l.id} className="flex items-center justify-between pb-2 border-b" style={{ borderColor: BRAND.paperDark }}>
+                      <div className="flex-1 pr-2">
+                        <p className="font-bold text-sm">{l.name}</p>
+                        <p className="text-xs text-gray-600">{formatGs(l.price)} x {l.qty} = {formatGs(l.price * l.qty)}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button onClick={() => removeItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.paperDark }}><Minus size={14} color={BRAND.charcoal} /></button>
-                        <button onClick={() => addItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.paperDark }}><Plus size={14} color={BRAND.charcoal} /></button>
-                        <button onClick={() => clearItem(l.id)} className="p-1.5 rounded" style={{ background: BRAND.tomato }}><Trash2 size={14} color={BRAND.cream} /></button>
+                        <button onClick={() => removeItem(l.id)} className="p-1 rounded-full" style={{ background: BRAND.paperDark }}>
+                          <Minus size={14} />
+                        </button>
+                        <span className="font-bold text-sm">{l.qty}</span>
+                        <button onClick={() => addItem(l.id)} className="p-1 rounded-full" style={{ background: BRAND.tomato, color: BRAND.cream }}>
+                          <Plus size={14} />
+                        </button>
+                        <button onClick={() => clearItem(l.id)} className="p-1 ml-1 text-red-600">
+                          <Trash2 size={16} />
+                        </button>
                       </div>
                     </div>
                   ))}
                 </div>
-              )}
 
-              {cartLines.length > 0 && (
-                <>
-                  <div className="flex gap-2 mt-4">
-                    <button onClick={() => setMode("retiro")} className="flex-1 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={mode === "retiro" ? { background: BRAND.green, color: BRAND.cream, borderColor: BRAND.green } : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.paperDark }}>
+                {/* Modalidad de Entrega */}
+                <div className="mb-4">
+                  <p className="font-bold text-sm mb-2">Modalidad de entrega:</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setMode("retiro")}
+                      className="p-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border-2"
+                      style={mode === "retiro" ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark } : { background: BRAND.cream, borderColor: BRAND.paperDark }}
+                    >
                       <Store size={16} /> Retiro
                     </button>
-                    <button onClick={() => setMode("delivery")} className="flex-1 rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={mode === "delivery" ? { background: BRAND.green, color: BRAND.cream, borderColor: BRAND.green } : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.paperDark }}>
+                    <button
+                      onClick={() => setMode("delivery")}
+                      className="p-2 rounded-lg text-sm font-bold flex items-center justify-center gap-2 border-2"
+                      style={mode === "delivery" ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark } : { background: BRAND.cream, borderColor: BRAND.paperDark }}
+                    >
                       <MapPin size={16} /> Delivery
                     </button>
                   </div>
+                </div>
 
-                  <div className="mt-4 pt-4 border-t-2 flex flex-col gap-1" style={{ borderColor: BRAND.paperDark }}>
-                    <div className="flex justify-between items-center">
-                      <span className="font-bold" style={{ color: BRAND.charcoal }}>Total</span>
-                      <span className="slab text-2xl" style={{ color: BRAND.tomato }}>{formatGs(totalPrice)}</span>
-                    </div>
-                    {mode === "delivery" && (
-                      <p className="text-xs mt-1" style={{ color: BRAND.tomatoDark }}>+ envío: {deliveryNote}</p>
-                    )}
+                {mode === "delivery" && (
+                  <div className="mb-4 flex flex-col gap-2 p-3 rounded-lg border-2" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+                    <button
+                      onClick={shareLocation}
+                      className="p-2 rounded text-xs font-bold flex items-center justify-center gap-1"
+                      style={{ background: BRAND.mustard, color: BRAND.charcoal }}
+                    >
+                      <Navigation size={14} />
+                      {locStatus === "loading" ? "Obteniendo ubicación..." : locStatus === "done" ? "Ubicación lista ✓" : "Compartir mi ubicación GPS"}
+                    </button>
+                    <input
+                      type="text"
+                      placeholder="Dirección o referencia (Ej: Calle X c/ Y)"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="w-full p-2 text-xs rounded border"
+                      style={{ borderColor: BRAND.paperDark }}
+                    />
+                    <p className="text-[11px] text-gray-500 italic">* {deliveryNote}</p>
                   </div>
+                )}
 
-                  {mode === "retiro" ? (
-                    <p className="text-xs mt-2 text-gray-500 flex items-center gap-1"><MapPin size={12} /> {ADDRESS}</p>
-                  ) : (
-                    <div className="mt-3">
-                      {mapLink ? (
-                        <div className="flex items-center justify-between rounded-lg p-3 mb-2" style={{ background: "#DFF3E4" }}>
-                          <span className="text-sm font-bold flex items-center gap-2" style={{ color: BRAND.green }}><CheckCircle2 size={16} /> Ubicación compartida</span>
-                          <button onClick={shareLocation} className="text-xs font-bold underline" style={{ color: BRAND.green }}>Actualizar</button>
-                        </div>
-                      ) : (
-                        <button onClick={shareLocation} disabled={locStatus === "loading"} className="w-full rounded-lg p-3 flex items-center justify-center gap-2 font-bold text-sm border-2" style={{ borderColor: BRAND.green, color: BRAND.green, background: "transparent" }}>
-                          {locStatus === "loading" ? (<><LoaderCircle className="animate-spin" size={16} /> Obteniendo ubicación...</>) : (<><Navigation size={16} /> Usar mi ubicación actual (Google Maps)</>)}
-                        </button>
-                      )}
-                      {locStatus === "error" && (
-                        <p className="text-xs mt-1" style={{ color: BRAND.tomato }}>No pudimos obtener tu ubicación. Escribí la dirección abajo.</p>
-                      )}
-                      <input
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        placeholder={mapLink ? "Referencia (casa, portón, piso, etc.) - opcional" : "O escribí tu dirección de entrega"}
-                        className="w-full mt-2 rounded-lg p-3 text-sm border-2"
-                        style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
-                      />
-                    </div>
-                  )}
-
-                  <textarea
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Aclaraciones o notas (ej: sin cebolla)"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Notas (ej: sin lechuga, punto de cocción, etc.)"
-                    rows={2}
-                    className="w-full mt-3 rounded-lg p-3 text-sm border-2"
-                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream }}
+                    className="w-full p-2 text-xs rounded border"
+                    style={{ borderColor: BRAND.paperDark }}
                   />
+                </div>
 
-                  <button
-                    onClick={sendOrder}
-                    disabled={mode === "delivery" && !address.trim() && !mapLink}
-                    className="w-full mt-4 rounded-xl p-4 flex items-center justify-center gap-2 font-bold slab text-lg disabled:opacity-50"
-                    style={{ background: "#25D366", color: "#0b3d1f" }}
-                  >
-                    <Send size={18} /> Enviar pedido por WhatsApp
-                  </button>
-                  <p className="text-xs text-center mt-2 text-gray-500">Se abre WhatsApp al {PHONE_DISPLAY} con tu pedido listo para confirmar</p>
-                </>
-              )}
-            </div>
+                <div className="pt-2 border-t flex items-center justify-between mb-4" style={{ borderColor: BRAND.paperDark }}>
+                  <span className="font-bold text-base">Total:</span>
+                  <span className="font-extrabold text-lg" style={{ color: BRAND.tomato }}>{formatGs(totalPrice)}</span>
+                </div>
+
+                <button
+                  onClick={sendOrder}
+                  className="w-full p-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg"
+                  style={{ background: BRAND.green, color: BRAND.cream }}
+                >
+                  <Send size={18} /> Enviar pedido por WhatsApp
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
