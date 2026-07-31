@@ -48,6 +48,64 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+// Mapa de íconos disponibles: clave -> dibujo SVG (path interno)
+const ICON_PATHS = {
+  almuerzo: "M12 2a1 1 0 011 1v6.06A5 5 0 0119 14a1 1 0 01-1 1H6a1 1 0 01-1-1 5 5 0 016-4.94V3a1 1 0 011-1zM4 18a1 1 0 011-1h14a1 1 0 011 1 3 3 0 01-3 3H7a3 3 0 01-3-3z",
+  minuta: "M8 8V3a1 1 0 012 0v5h1V4a1 1 0 012 0v4h1V3a1 1 0 012 0v5l-1 12a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
+  sandwich: "M3 11l9-7 9 7v2H3zM4 15h16v2a3 3 0 01-3 3H7a3 3 0 01-3-3zM3 14h18v-1H3z",
+  empanada: "M12 3c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9zm-4.5 9.5c1 .8 2 1.6 3 .8s1-1.6 2-.8 2 1.6 3 .8",
+  hamburguesa: "M4 10c0-3 3.5-6 8-6s8 3 8 6zM3 11h18v2H3zM4 15h16v1a3 3 0 01-3 3H7a3 3 0 01-3-3zM3 13.2h18v.6H3z",
+  pizza: "M12 2L22 20H2z",
+  bebida: "M8 2h8l-1 18a2 2 0 01-2 2h-2a2 2 0 01-2-2zM7 8h10v2H7z",
+  postre: "M6 20a4 4 0 004-4H6zm4-4a4 4 0 004 4 4 4 0 004-4zM10 4a2 2 0 114 0c0 1-.5 1.6-1 2h-2c-.5-.4-1-1-1-2zM11 8h2v8h-2z",
+  cafe: "M4 4h13v9a5 5 0 01-5 5H9a5 5 0 01-5-5zM17 6h1a3 3 0 013 3 3 3 0 01-3 3h-1V6z",
+  pollo: "M12 3c3 0 5 2 5 5 0 2-1 3-2 4l3 8-3 1-2-6-1 .3V21h-2v-5.7l-1-.3-2 6-3-1 3-8c-1-1-2-2-2-4 0-3 2-5 5-5z",
+  ensalada: "M4 12a8 8 0 1116 0zM6 14h12l-1 3a2 2 0 01-2 2H9a2 2 0 01-2-2z",
+  generico: "M6 2a1 1 0 011 1v6a2 2 0 001 1.7V22a1 1 0 01-2 0v-11.3A2 2 0 015 9V3a1 1 0 011-1zm4 0a1 1 0 011 1v6a2 2 0 01-1 1.7V22a1 1 0 01-2 0V10.7A2 2 0 019 9V3a1 1 0 011-1zm8 1v8a3 3 0 01-2 2.8V22a1 1 0 01-2 0V3.8a3 3 0 012-2.8z",
+};
+
+const ICON_OPTIONS = [
+  { key: "almuerzo", label: "Almuerzo" },
+  { key: "minuta", label: "Minuta / papas" },
+  { key: "sandwich", label: "Sandwich" },
+  { key: "empanada", label: "Empanada" },
+  { key: "hamburguesa", label: "Hamburguesa" },
+  { key: "pizza", label: "Pizza" },
+  { key: "bebida", label: "Bebida" },
+  { key: "postre", label: "Postre" },
+  { key: "cafe", label: "Café / desayuno" },
+  { key: "pollo", label: "Pollo / asado" },
+  { key: "ensalada", label: "Ensalada" },
+  { key: "generico", label: "Genérico" },
+];
+
+function guessIconKey(name) {
+  const n = (name || "").toLowerCase();
+  if (n.includes("almuerzo") || n.includes("menú") || n.includes("menu") || n.includes("plato")) return "almuerzo";
+  if (n.includes("minuta") || n.includes("papa") || n.includes("frita")) return "minuta";
+  if (n.includes("sandwich") || n.includes("miga") || n.includes("milanesa") || n.includes("panch")) return "sandwich";
+  if (n.includes("empanada")) return "empanada";
+  if (n.includes("hamburgues")) return "hamburguesa";
+  if (n.includes("pizza")) return "pizza";
+  if (n.includes("jugo") || n.includes("licuado") || n.includes("bebida")) return "bebida";
+  if (n.includes("postre") || n.includes("dulce") || n.includes("torta")) return "postre";
+  if (n.includes("café") || n.includes("cafe") || n.includes("desayuno")) return "cafe";
+  if (n.includes("pollo") || n.includes("asado") || n.includes("parrilla")) return "pollo";
+  if (n.includes("ensalada")) return "ensalada";
+  return "generico";
+}
+
+function CategoryIcon({ name, icon, size = 18, color = "currentColor" }) {
+  const key = icon && ICON_PATHS[icon] ? icon : guessIconKey(name);
+  const props = { width: size, height: size, viewBox: "0 0 24 24", fill: color };
+  if (key === "pizza") {
+    return (
+      <svg {...props}><path d={ICON_PATHS.pizza} /><circle cx="10" cy="10" r="1.1" fill="#F0E2BF" /><circle cx="14" cy="13" r="1.1" fill="#F0E2BF" /><circle cx="11" cy="16" r="1.1" fill="#F0E2BF" /></svg>
+    );
+  }
+  return <svg {...props}><path d={ICON_PATHS[key]} /></svg>;
+}
+
 function compressImage(file, maxSize = 320, quality = 0.62) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -279,8 +337,12 @@ export default function App() {
     setDraft((d) => d.map((c, ci) => (ci !== catIdx ? c : { ...c, category: value })));
     setDirty(true);
   };
+  const updateCategoryIcon = (catIdx, iconKey) => {
+    setDraft((d) => d.map((c, ci) => (ci !== catIdx ? c : { ...c, icon: iconKey })));
+    setDirty(true);
+  };
   const addCategory = () => {
-    setDraft((d) => [...d, { category: "Nueva categoría", items: [] }]);
+    setDraft((d) => [...d, { category: "Nueva categoría", icon: "generico", items: [] }]);
     setDirty(true);
   };
 
@@ -417,6 +479,27 @@ export default function App() {
                 <button onClick={() => deleteCategory(catIdx)} className="p-2 rounded-lg" style={{ background: BRAND.tomato }}>
                   <Trash2 size={14} color={BRAND.cream} />
                 </button>
+              </div>
+
+              <div className="mb-4">
+                <p className="text-xs font-bold mb-1.5" style={{ color: BRAND.charcoal }}>Ícono de esta categoría</p>
+                <div className="flex flex-wrap gap-2">
+                  {ICON_OPTIONS.map((opt) => {
+                    const selected = (c.icon || guessIconKey(c.category)) === opt.key;
+                    return (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => updateCategoryIcon(catIdx, opt.key)}
+                        title={opt.label}
+                        className="p-2 rounded-lg border-2 flex items-center justify-center"
+                        style={selected ? { background: BRAND.tomato, borderColor: BRAND.tomatoDark } : { background: BRAND.paper, borderColor: BRAND.paperDark }}
+                      >
+                        <CategoryIcon icon={opt.key} name="" size={18} color={selected ? BRAND.cream : BRAND.charcoal} />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="flex flex-col gap-2">
@@ -585,11 +668,12 @@ export default function App() {
           <button
             key={c.category}
             onClick={() => setOpenCat(c.category)}
-            className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2"
+            className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2 flex items-center gap-1.5"
             style={openCat === c.category
               ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
               : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.charcoal }}
           >
+            <CategoryIcon name={c.category} icon={c.icon} size={16} />
             {c.category}
           </button>
         ))}
