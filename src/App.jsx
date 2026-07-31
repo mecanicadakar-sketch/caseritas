@@ -6,11 +6,10 @@ import {
 } from "lucide-react";
 
 /* =========================================================================
-   CONFIGURACIÓN — Lo único que tenés que completar vos
+   CONFIGURACIÓN
    ========================================================================= */
 
-// Pegá acá la URL que te da Google Apps Script al publicar (termina en /exec)
-const SHEETS_API_URL = "/api/menu"; // función propia conectada a Neon, no hace falta tocar esto
+const SHEETS_API_URL = "/api/menu"; 
 
 const PHONE_INTL = "595985913400";
 const PHONE_DISPLAY = "0985 913 400";
@@ -48,7 +47,6 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
-// Mapa de íconos disponibles: clave -> dibujo SVG (path interno)
 const ICON_PATHS = {
   almuerzo: "M12 2a1 1 0 011 1v6.06A5 5 0 0119 14a1 1 0 01-1 1H6a1 1 0 01-1-1 5 5 0 016-4.94V3a1 1 0 011-1zM4 18a1 1 0 011-1h14a1 1 0 011 1 3 3 0 01-3 3H7a3 3 0 01-3-3z",
   minuta: "M8 8V3a1 1 0 012 0v5h1V4a1 1 0 012 0v4h1V3a1 1 0 012 0v5l-1 12a2 2 0 01-2 2h-2a2 2 0 01-2-2z",
@@ -164,18 +162,18 @@ export default function App() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  // Estilo para la imagen de fondo de pantalla
- const pageBackgroundStyle = {
+  // Estilo de Fondo Corregido: Una sola imagen adaptada al centro sin repetirse en mosaico
+  const pageBackgroundStyle = {
     backgroundImage: `url('/fondocaserita.png')`,
-    backgroundSize: '350px auto', // Controla exactamente el tamaño del patrón
-    backgroundPosition: 'center top',
-    backgroundRepeat: 'repeat',
+    backgroundSize: 'cover',
+    backgroundPosition: 'center center',
+    backgroundRepeat: 'no-repeat',
     backgroundAttachment: 'fixed',
+    backgroundColor: BRAND.paper,
     minHeight: '100vh',
     width: '100%',
   };
 
-  // ---- Carga inicial desde Google Sheets ----
   useEffect(() => {
     (async () => {
       try {
@@ -205,7 +203,6 @@ export default function App() {
     }
   }, [menu, loading]);
 
-  // ---- Carrito ----
   const addItem = (id) => setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));
   const removeItem = (id) =>
     setCart((c) => {
@@ -273,7 +270,6 @@ export default function App() {
     window.open(`https://wa.me/${PHONE_INTL}?text=${text}`, "_blank");
   };
 
-  // ---- Administración ----
   const saveMenu = async (nextMenu, nextNote, nextPin) => {
     setSaving(true);
     setSaveError("");
@@ -505,8 +501,7 @@ export default function App() {
           <div className="mb-4 rounded-lg p-3 flex items-start gap-2" style={{ background: "#FFF3C4", border: `1px solid ${BRAND.mustard}` }}>
             <span className="text-lg">💡</span>
             <p className="text-xs" style={{ color: BRAND.charcoal }}>
-              Después de editar, tocá <b>"Guardar cambios"</b> abajo de todo. Las fotos van como <b>link de imagen</b>
-              (subí la foto a Google Drive u otro servicio, copiá el link público y pegalo acá).
+              Después de editar, tocá <b>"Guardar cambios"</b> abajo de todo.
             </p>
           </div>
 
@@ -686,13 +681,17 @@ export default function App() {
         <p className="text-xs text-center py-2" style={{ background: BRAND.mustard, color: BRAND.charcoal }}>⚠️ {loadError}</p>
       )}
 
-      <img 
-  src="/banner.jpg" 
-  alt="La Caserita" 
-  className="w-full max-w-xl mx-auto block object-contain" 
-/>
+      {/* Contenedor del banner con fondo oscuro para PC */}
+      <div style={{ background: BRAND.charcoal }} className="w-full flex justify-center">
+        <img 
+          src="/banner.jpg" 
+          alt="La Caserita" 
+          className="w-full max-w-xl block object-contain" 
+        />
+      </div>
+
       <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg">
-        <div className="flex items-center justify-between px-5 py-3 gap-3">
+        <div className="flex items-center justify-between px-5 py-3 gap-3 max-w-xl mx-auto">
           <p className="hand text-2xl" style={{ color: BRAND.mustard }}>Pedí online</p>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1">
@@ -719,20 +718,22 @@ export default function App() {
         </p>
       </div>
 
-      <div className="flex gap-2 overflow-x-auto px-4 py-3" style={{ background: BRAND.paperDark }}>
-        {menu.map((c) => (
-          <button
-            key={c.category}
-            onClick={() => setOpenCat(c.category)}
-            className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2 flex items-center gap-1.5"
-            style={openCat === c.category
-              ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
-              : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.charcoal }}
-          >
-            <CategoryIcon name={c.category} icon={c.icon} size={16} />
-            {c.category}
-          </button>
-        ))}
+      <div style={{ background: BRAND.paperDark }}>
+        <div className="flex gap-2 overflow-x-auto px-4 py-3 max-w-xl mx-auto">
+          {menu.map((c) => (
+            <button
+              key={c.category}
+              onClick={() => setOpenCat(c.category)}
+              className="whitespace-nowrap px-4 py-2 rounded-full text-sm font-bold border-2 flex items-center gap-1.5"
+              style={openCat === c.category
+                ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
+                : { background: "transparent", color: BRAND.charcoal, borderColor: BRAND.charcoal }}
+            >
+              <CategoryIcon name={c.category} icon={c.icon} size={16} />
+              {c.category}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Menú de Productos */}
@@ -815,7 +816,6 @@ export default function App() {
                   ))}
                 </div>
 
-                {/* Modalidad de Entrega */}
                 <div className="mb-4">
                   <p className="font-bold text-sm mb-2">Modalidad de entrega:</p>
                   <div className="grid grid-cols-2 gap-2">
