@@ -683,11 +683,7 @@ export default function App() {
 
       {/* Contenedor del banner con fondo oscuro para PC */}
       <div style={{ background: BRAND.charcoal }} className="w-full flex justify-center">
-        <img 
-          src="/banner.jpg" 
-          alt="La Caserita" 
-          className="w-full max-w-xl block object-contain" 
-        />
+        <img src="/banner.jpg" alt="La Caserita" className="w-full block" />
       </div>
 
       <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg">
