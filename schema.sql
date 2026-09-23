@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS config (
 
 -- Datos iniciales: cambiá el usuario, el PIN y el mensaje de envío por los tuyos
 INSERT INTO config (key, value) VALUES
-  ('admin_user', 'admin'),
+  ('admin_user', 'Usuario'),
   ('pin', 'Ricaji270985#'),
   ('delivery_note', 'El costo de envío se coordina según la zona')
 ON CONFLICT (key) DO NOTHING;
