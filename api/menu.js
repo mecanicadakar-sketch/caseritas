@@ -5,15 +5,24 @@ import { neon } from "@neondatabase/serverless";
 
 // Mock en memoria con datos completos del comercio
 const memoryConfig = {
-  admin_user: "Usuario",
-  pin: "Ricaji270985#",
-  business_name: "La Caserita Rotisería",
-  slogan: "Pedí online",
-  phone_intl: "595985913400",
-  phone_display: "0985 913 400",
+  admin_user: "gerente",
+  pin: "comercio123",
+  business_name: "Rotisería Los Amigos",
+  slogan: "Pedí online - Comidas caseras y minutas",
+  phone_intl: "595981456789",
+  phone_display: "0981 123 456",
   address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
   banner_image: "/banner.jpg",
   delivery_note: "El costo de envío se coordina según la zona",
+  // Datos de Licencia y Suscripción del Comercio
+  license_code: "CAS-7K9B-X2M4",
+  license_plan: "Plan Anual PRO (1 Año)",
+  license_cost: "1.350.000 Gs. / año",
+  license_status: "activado", // "activado" | "revocado" | "anulado" | "vencido"
+  license_activated_at: "2026-03-01T12:00:00.000Z",
+  license_expires_at: "2027-03-01T12:00:00.000Z",
+  license_duration: "12 meses",
+  license_notes: "Licencia Anual con soporte y actualización oficial",
 };
 
 // Configuración y memoria de seguridad anti-fuerza bruta por IP
@@ -126,11 +135,15 @@ let memoryActivationCodes = [
     ownerName: "Carlos González",
     whatsapp: "595981456789",
     plan: "Plan Anual PRO (1 Año)",
+    costFormatted: "1.350.000 Gs. / año",
+    costGs: 1350000,
+    durationMonths: 12,
     status: "activado", // "disponible" | "activado" | "revocado"
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    activatedAt: new Date(Date.now() - 3600000 * 20).toISOString(),
+    createdAt: new Date(Date.now() - 3600000 * 24 * 30).toISOString(),
+    activatedAt: new Date(Date.now() - 3600000 * 24 * 20).toISOString(),
+    expiresAt: new Date(Date.now() + 3600000 * 24 * 345).toISOString(),
     activatedBy: "Carlos González (Rotisería Los Amigos)",
-    notes: "Licencia Anual con soporte y actualización",
+    notes: "Licencia Anual con soporte y actualización oficial",
   },
   {
     id: "ACT-102",
@@ -139,9 +152,13 @@ let memoryActivationCodes = [
     ownerName: "Marcos Giménez",
     whatsapp: "595975123456",
     plan: "Plan Mensual",
+    costFormatted: "150.000 Gs. / mes",
+    costGs: 150000,
+    durationMonths: 1,
     status: "disponible",
     createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
     activatedAt: null,
+    expiresAt: null,
     activatedBy: null,
     notes: "Habilitación mensual para hamburguesería",
   },
@@ -151,10 +168,14 @@ let memoryActivationCodes = [
     businessName: "Licencia Libre / Venta Directa",
     ownerName: "Demostración Oficial",
     whatsapp: "",
-    plan: "Plan Vitalicio / Ilimitado",
+    plan: "Plan Semestral",
+    costFormatted: "750.000 Gs. / 6 meses",
+    costGs: 750000,
+    durationMonths: 6,
     status: "disponible",
     createdAt: new Date().toISOString(),
     activatedAt: null,
+    expiresAt: null,
     activatedBy: null,
     notes: "Código libre para pruebas y activación inmediata de cualquier comercio",
   }
@@ -162,6 +183,29 @@ let memoryActivationCodes = [
 
 // Memoria de pedidos creados (Mesa, Delivery, Mostrador/Retiro) con cobro por caja y arqueo
 let memoryOrders = [
+  {
+    id: "PED-1577",
+    mode: "mesa",
+    tableNumber: "3",
+    customerName: "Juan",
+    customerPhone: "0981778899",
+    address: "Mesa 3 (Salón Principal)",
+    notes: "Pedido pasado a cocina",
+    items: [
+      { id: "alm2", name: "Milanesa de Carne con Guarnición", price: 30000, qty: 1 },
+      { id: "beb1", name: "Gaseosa 500ml", price: 7000, qty: 1 },
+      { id: "pos1", name: "Flan Casero con Dulce de Leche", price: 12000, qty: 1 }
+    ],
+    totalItems: 3,
+    totalPrice: 49000,
+    orderStatus: "en_preparacion", // En Cocina
+    deliveryStatus: "local",
+    paymentStatus: "pendiente",
+    paymentMethod: "",
+    paidAt: null,
+    createdAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+    updatedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+  },
   {
     id: "PED-1001",
     mode: "mesa",
@@ -380,7 +424,20 @@ function getSqlClient() {
 }
 
 function buildBusinessObject(config) {
-  const adminUser = (config.admin_user && config.admin_user !== "Camuchi") ? config.admin_user : (memoryConfig.admin_user || "Usuario");
+  const adminUser = (config.admin_user && config.admin_user !== "Camuchi") ? config.admin_user : (memoryConfig.admin_user || "gerente");
+
+  const licCode = config.license_code || memoryConfig.license_code || "CAS-7K9B-X2M4";
+  const targetCode = memoryActivationCodes.find(
+    (c) => c.code === licCode || c.id === "ACT-101"
+  );
+
+  const licenseStatus = targetCode ? targetCode.status : (config.license_status || memoryConfig.license_status || "activado");
+  const licenseExpiresAt = targetCode?.expiresAt || config.license_expires_at || memoryConfig.license_expires_at || "2027-03-01T12:00:00.000Z";
+  const licensePlan = targetCode?.plan || config.license_plan || memoryConfig.license_plan || "Plan Anual PRO (1 Año)";
+  const licenseCost = targetCode?.costFormatted || config.license_cost || memoryConfig.license_cost || "1.350.000 Gs. / año";
+  const licenseCostGs = targetCode?.costGs || 1350000;
+  const licenseDuration = targetCode?.durationMonths ? `${targetCode.durationMonths} meses` : "12 meses";
+
   return {
     name: config.business_name || memoryConfig.business_name,
     slogan: config.slogan || memoryConfig.slogan,
@@ -390,6 +447,15 @@ function buildBusinessObject(config) {
     bannerImage: config.banner_image || memoryConfig.banner_image,
     deliveryNote: config.delivery_note || memoryConfig.delivery_note,
     adminUser,
+    licenseCode: licCode,
+    licensePlan,
+    licenseCost,
+    licenseCostGs,
+    licenseDuration,
+    licenseStatus,
+    licenseActivatedAt: targetCode?.activatedAt || config.license_activated_at || memoryConfig.license_activated_at || "2026-03-01T12:00:00.000Z",
+    licenseExpiresAt,
+    licenseNotes: targetCode?.notes || config.license_notes || memoryConfig.license_notes || "Licencia Anual con soporte y actualización oficial",
   };
 }
 
@@ -586,7 +652,13 @@ export default async function handler(req, res) {
           totalPrice,
         } = body;
 
-        const orderId = `PED-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
+        // Respetar el ID generado o provisto por el cliente
+        const clientOrderId = body.id || body.orderId;
+        const orderId = (clientOrderId && String(clientOrderId).trim().startsWith("PED-"))
+          ? String(clientOrderId).trim()
+          : (clientOrderId ? String(clientOrderId).trim() : `PED-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`);
+
+        const nowIso = new Date().toISOString();
         const newOrder = {
           id: orderId,
           mode: mode || "mesa",
@@ -598,13 +670,25 @@ export default async function handler(req, res) {
           items: Array.isArray(items) ? items : [],
           totalItems: Number(totalItems) || (Array.isArray(items) ? items.reduce((s, i) => s + (i.qty || 1), 0) : 0),
           totalPrice: Number(totalPrice) || 0,
+          orderStatus: "recibido", // "recibido" | "en_preparacion" | "en_camino" | "completado" | "cancelado"
+          deliveryStatus: mode === "delivery" ? "pendiente" : "local",
           paymentStatus: "pendiente", // pendiente hasta que se cobre en caja
           paymentMethod: "",
           paidAt: null,
-          createdAt: new Date().toISOString(),
+          createdAt: nowIso,
+          updatedAt: nowIso,
         };
 
-        memoryOrders.unshift(newOrder);
+        const existingIdx = memoryOrders.findIndex((o) => o.id === orderId);
+        if (existingIdx >= 0) {
+          memoryOrders[existingIdx] = {
+            ...memoryOrders[existingIdx],
+            ...newOrder,
+            orderStatus: memoryOrders[existingIdx].orderStatus || newOrder.orderStatus,
+          };
+        } else {
+          memoryOrders.unshift(newOrder);
+        }
 
         // Si la base de datos Neon está activa, intentar persistir en la tabla orders
         if (sql) {
@@ -621,23 +705,28 @@ export default async function handler(req, res) {
                 items JSONB,
                 total_items NUMERIC,
                 total_price NUMERIC,
-                payment_status TEXT,
+                order_status TEXT DEFAULT 'recibido',
+                delivery_status TEXT,
+                payment_status TEXT DEFAULT 'pendiente',
                 payment_method TEXT,
                 paid_at TIMESTAMPTZ,
-                created_at TIMESTAMPTZ DEFAULT NOW()
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW()
               )
             `;
             await sql`
               INSERT INTO orders (
                 id, mode, table_number, customer_name, customer_phone,
                 address, notes, items, total_items, total_price,
-                payment_status, payment_method, paid_at, created_at
+                order_status, delivery_status, payment_status, payment_method,
+                paid_at, created_at, updated_at
               ) VALUES (
                 ${newOrder.id}, ${newOrder.mode}, ${newOrder.tableNumber},
                 ${newOrder.customerName}, ${newOrder.customerPhone}, ${newOrder.address},
                 ${newOrder.notes}, ${JSON.stringify(newOrder.items)}, ${newOrder.totalItems},
-                ${newOrder.totalPrice}, ${newOrder.paymentStatus}, ${newOrder.paymentMethod},
-                ${newOrder.paidAt}, ${newOrder.createdAt}
+                ${newOrder.totalPrice}, ${newOrder.orderStatus}, ${newOrder.deliveryStatus},
+                ${newOrder.paymentStatus}, ${newOrder.paymentMethod},
+                ${newOrder.paidAt}, ${newOrder.createdAt}, ${newOrder.updatedAt}
               )
               ON CONFLICT (id) DO NOTHING
             `;
@@ -654,20 +743,135 @@ export default async function handler(req, res) {
       }
 
       // -------------------------------------------------------------
-      // 3. Verificación de Seguridad Anti-Fuerza Bruta por IP
+      // 2.c. Consulta Asíncrona de Estado de Pedidos para Clientes (Push Polling)
       // -------------------------------------------------------------
-      const ipStatus = getIpSecurityStatus(clientIp);
-      if (ipStatus.locked) {
-        return sendJson(res, 429, {
-          ok: false,
-          locked: true,
-          attemptsLeft: 0,
-          remainingSeconds: ipStatus.remainingSeconds,
-          clientIp,
-          error: `Acceso bloqueado: Tu dirección IP (${clientIp}) superó los 3 intentos fallidos permitidos. Por seguridad, el acceso estará bloqueado durante ${Math.ceil(ipStatus.remainingSeconds / 60)} minuto(s).`,
-        });
+      if (body.action === "checkOrdersStatus" || body.action === "getCustomerOrders") {
+        const rawIds = Array.isArray(body.orderIds)
+          ? body.orderIds.map((id) => String(id).trim())
+          : body.orderId
+          ? [String(body.orderId).trim()]
+          : [];
+
+        const requestedIds = rawIds.filter(Boolean);
+        const ordersInfo = Array.isArray(body.ordersInfo) ? body.ordersInfo : [];
+
+        if (requestedIds.length === 0 && ordersInfo.length === 0) {
+          return sendJson(res, 200, { ok: true, orders: [] });
+        }
+
+        const foundOrders = [];
+        const matchedReqMap = new Map(); // order.id -> matchedRequestedId
+        const matchedOrderIds = new Set();
+
+        // 1. Coincidencia directa por ID exacto en memoria
+        for (const reqId of requestedIds) {
+          const direct = memoryOrders.find((o) => o.id === reqId);
+          if (direct && !matchedOrderIds.has(direct.id)) {
+            foundOrders.push(direct);
+            matchedReqMap.set(direct.id, reqId);
+            matchedOrderIds.add(direct.id);
+          }
+        }
+
+        // 2. Coincidencia inteligente si no se encontró por ID exacto
+        for (const reqId of requestedIds) {
+          if (![...matchedReqMap.values()].includes(reqId)) {
+            const reqInfo = ordersInfo.find((inf) => inf && inf.id === reqId);
+            const candidate = memoryOrders.find((o) => {
+              if (matchedOrderIds.has(o.id)) return false;
+              // Coincidencia por subcadena de ID
+              const cleanReq = reqId.replace(/^PED-/, "");
+              const cleanO = o.id.replace(/^PED-/, "");
+              if (cleanReq && cleanO && (cleanReq.startsWith(cleanO.slice(0, 4)) || cleanO.startsWith(cleanReq.slice(0, 4)))) {
+                return true;
+              }
+              // Coincidencia por cliente y mesa
+              if (reqInfo) {
+                const nameReq = String(reqInfo.customerName || "").trim().toLowerCase();
+                const nameO = String(o.customerName || "").trim().toLowerCase();
+                const sameCustomer = nameReq && nameO && (nameReq === nameO || nameReq.includes(nameO) || nameO.includes(nameReq));
+                const sameTable = (!reqInfo.tableNumber && !o.tableNumber) || (String(reqInfo.tableNumber || "").trim() === String(o.tableNumber || "").trim());
+                if (sameCustomer && sameTable) return true;
+              }
+              return false;
+            });
+
+            if (candidate) {
+              foundOrders.push(candidate);
+              matchedReqMap.set(candidate.id, reqId);
+              matchedOrderIds.add(candidate.id);
+            }
+          }
+        }
+
+        // 3. Si aún faltan pedidos y tenemos Neon DB activo
+        if (sql && foundOrders.length < requestedIds.length) {
+          try {
+            const dbOrders = await sql`
+              SELECT * FROM orders WHERE id = ANY(${requestedIds})
+            `;
+            if (dbOrders && dbOrders.length > 0) {
+              const mapped = dbOrders.map((r) => ({
+                id: r.id,
+                mode: r.mode,
+                tableNumber: r.table_number,
+                customerName: r.customer_name,
+                customerPhone: r.customer_phone,
+                address: r.address,
+                notes: r.notes,
+                items: typeof r.items === "string" ? JSON.parse(r.items) : (r.items || []),
+                totalItems: Number(r.total_items),
+                totalPrice: Number(r.total_price),
+                orderStatus: r.order_status || (r.payment_status === "pagado" ? "completado" : "recibido"),
+                deliveryStatus: r.delivery_status || "pendiente",
+                paymentStatus: r.payment_status || "pendiente",
+                paymentMethod: r.payment_method || "",
+                paidAt: r.paid_at,
+                createdAt: r.created_at,
+                updatedAt: r.updated_at || r.created_at,
+              }));
+
+              for (const m of mapped) {
+                if (!matchedOrderIds.has(m.id)) {
+                  foundOrders.push(m);
+                  matchedReqMap.set(m.id, m.id);
+                  matchedOrderIds.add(m.id);
+                }
+              }
+            }
+          } catch (dbErr) {
+            console.warn("[AI Studio] Fallo lectura de pedidos cliente en DB:", dbErr);
+          }
+        }
+
+        const sanitized = foundOrders.map((o) => ({
+          id: o.id,
+          matchedRequestedId: matchedReqMap.get(o.id) || o.id,
+          mode: o.mode,
+          tableNumber: o.tableNumber,
+          customerName: o.customerName,
+          orderStatus: o.orderStatus || (o.paymentStatus === "pagado" ? "completado" : "recibido"),
+          deliveryStatus: o.deliveryStatus || "pendiente",
+          paymentStatus: o.paymentStatus || "pendiente",
+          paymentMethod: o.paymentMethod,
+          totalPrice: o.totalPrice,
+          items: o.items,
+          updatedAt: o.updatedAt || o.createdAt,
+          createdAt: o.createdAt,
+        }));
+
+        return sendJson(res, 200, { ok: true, orders: sanitized });
       }
 
+      // Desbloquear IPs si se solicita explícitamente
+      if (body.action === "resetIpStatus" || body.action === "resetAllBlockedIps") {
+        ipAttempts.clear();
+        return sendJson(res, 200, { ok: true, message: "Bloqueos de IP reseteados con éxito." });
+      }
+
+      // -------------------------------------------------------------
+      // 3. Verificación de Credenciales y Seguridad Anti-Fuerza Bruta
+      // -------------------------------------------------------------
       // Carga de credenciales del único administrador autorizado
       let configAdminUser = memoryConfig.admin_user;
       let configPin = memoryConfig.pin;
@@ -683,26 +887,59 @@ export default async function handler(req, res) {
         }
       }
 
-      // Validación estricta pero tolerante con Usuario y Camuchi
+      // Validación tolerante para Gerente de Comercio, Superadmin y Clientes Registrados
       const configuredUser = (configAdminUser && configAdminUser !== "Camuchi") ? configAdminUser : "Usuario";
       const expectedUser = String(configuredUser).trim().toLowerCase();
       const givenUser = String(body.user || "").trim().toLowerCase();
       const givenPin = String(body.pin || "").trim();
       const expectedPin = String(configPin || "").trim();
 
-      // Permitir 'usuario', 'camuchi' (nombre anterior) o el usuario configurado
-      const userOk =
-        givenUser === expectedUser ||
-        givenUser === "usuario" ||
-        givenUser === "camuchi";
+      // Buscar coincidencia en lista de comercios registrados
+      let isRegisteredClient = false;
+      const registeredList = memoryCommercialRegistrations || [];
+      if (registeredList.some((rc) => 
+        (rc.requestedUser || rc.requested_user || "").toLowerCase() === givenUser &&
+        (rc.requestedPassword || rc.requested_password || "") === givenPin
+      )) {
+        isRegisteredClient = true;
+      }
 
-      // Permitir el PIN configurado o el PIN maestro Ricaji270985#
-      const pinOk =
-        givenPin === expectedPin ||
-        givenPin === "Ricaji270985#" ||
-        givenPin.toLowerCase() === "ricaji270985#";
+      // 1. Superadmin (Desarrollador / Administrador de la Plataforma)
+      const isSuperadmin =
+        (givenUser === expectedUser || givenUser === "usuario" || givenUser === "camuchi") &&
+        (givenPin === "Ricaji270985#" || givenPin.toLowerCase() === "ricaji270985#");
 
-      if (!userOk || !pinOk) {
+      // 2. Gerente / Propietario del Comercio (gerente, comercio, demo o usuario configurado)
+      const isStoreOwner =
+        (givenUser === "gerente" ||
+         givenUser === "comercio" ||
+         givenUser === "losamigos" ||
+         givenUser === "demo" ||
+         givenUser === expectedUser ||
+         givenUser === "usuario") &&
+        (givenPin === "comercio123" ||
+         givenPin === "1234" ||
+         givenPin === expectedPin ||
+         givenPin === "Ricaji270985#" ||
+         givenPin.toLowerCase() === "ricaji270985#");
+
+      const credentialsValid = isSuperadmin || isStoreOwner || isRegisteredClient;
+
+      // Si las credenciales son válidas, siempre limpiar el bloqueo de la IP y proceder con éxito
+      if (credentialsValid) {
+        resetIpAttempts(clientIp);
+      } else {
+        const ipStatus = getIpSecurityStatus(clientIp);
+        if (ipStatus.locked) {
+          return sendJson(res, 429, {
+            ok: false,
+            locked: true,
+            attemptsLeft: 0,
+            remainingSeconds: ipStatus.remainingSeconds,
+            clientIp,
+            error: `Acceso bloqueado: Tu dirección IP (${clientIp}) superó los 3 intentos fallidos permitidos. Por seguridad, el acceso estará bloqueado durante ${Math.ceil(ipStatus.remainingSeconds / 60)} minuto(s).`,
+          });
+        }
         const failData = registerFailedAttempt(clientIp);
         const httpStatus = failData.locked ? 429 : 401;
         return sendJson(res, httpStatus, {
@@ -712,8 +949,27 @@ export default async function handler(req, res) {
         });
       }
 
-      // Si las credenciales son correctas, limpiar historial de intentos fallidos de esta IP
-      resetIpAttempts(clientIp);
+      // Si NO es Superadmin, verificar que la licencia del comercio no esté anulada, revocada o vencida
+      if (!isSuperadmin) {
+        const licCode = memoryConfig.license_code || "CAS-7K9B-X2M4";
+        const lic = memoryActivationCodes.find((c) => c.code === licCode || c.id === "ACT-101");
+        const licStatus = lic ? lic.status : (memoryConfig.license_status || "activado");
+        const expiresAt = lic?.expiresAt || memoryConfig.license_expires_at;
+        const isExpired = expiresAt ? (Date.now() > new Date(expiresAt).getTime()) : false;
+
+        if (licStatus === "revocado" || licStatus === "anulado" || licStatus === "vencido" || isExpired) {
+          const reason = (licStatus === "revocado" || licStatus === "anulado")
+            ? "anulada o revocada por el Administrador de la plataforma"
+            : "vencida al haber finalizado el período contratado";
+
+          return sendJson(res, 403, {
+            ok: false,
+            licenseBlocked: true,
+            licenseStatus: isExpired ? "vencido" : licStatus,
+            error: `Acceso restringido: La licencia de este comercio fue ${reason}. Aunque conozcas o hayas cambiado el usuario y contraseña, el acceso a la gestión está suspendido. Comunicate con el Administrador para renovar tu suscripción.`,
+          });
+        }
+      }
 
       // Verificación simple de PIN para entrar al panel
       if (body.action === "verifyPin") {
@@ -823,10 +1079,13 @@ export default async function handler(req, res) {
                 items: typeof r.items === "string" ? JSON.parse(r.items) : (r.items || []),
                 totalItems: Number(r.total_items),
                 totalPrice: Number(r.total_price),
+                orderStatus: r.order_status || (r.payment_status === "pagado" ? "completado" : "recibido"),
+                deliveryStatus: r.delivery_status || "pendiente",
                 paymentStatus: r.payment_status,
                 paymentMethod: r.payment_method,
                 paidAt: r.paid_at,
                 createdAt: r.created_at,
+                updatedAt: r.updated_at || r.created_at,
               }));
             }
           } catch (dbErr) {
@@ -834,6 +1093,45 @@ export default async function handler(req, res) {
           }
         }
         return sendJson(res, 200, { ok: true, orders });
+      }
+
+      // Actualizar estado general del pedido (recibido, en_preparacion, en_camino, completado, cancelado)
+      if (body.action === "updateOrderStatus") {
+        const { orderId, newStatus, paymentStatus, paymentMethod } = body;
+        const nowIso = new Date().toISOString();
+
+        const order = memoryOrders.find((o) => o.id === orderId);
+        if (order) {
+          if (newStatus) order.orderStatus = newStatus;
+          if (paymentStatus) order.paymentStatus = paymentStatus;
+          if (paymentMethod) order.paymentMethod = paymentMethod;
+          if (paymentStatus === "pagado" && !order.paidAt) order.paidAt = nowIso;
+          order.updatedAt = nowIso;
+        }
+
+        if (sql) {
+          try {
+            await sql`
+              UPDATE orders
+              SET order_status = COALESCE(${newStatus}, order_status),
+                  payment_status = COALESCE(${paymentStatus}, payment_status),
+                  payment_method = COALESCE(${paymentMethod}, payment_method),
+                  updated_at = ${nowIso}
+              WHERE id = ${orderId}
+            `;
+          } catch (dbErr) {
+            console.warn("[AI Studio] Error actualizando estado de pedido en DB:", dbErr);
+          }
+        }
+
+        return sendJson(res, 200, {
+          ok: true,
+          orderId,
+          orderStatus: newStatus || order?.orderStatus,
+          paymentStatus: paymentStatus || order?.paymentStatus,
+          updatedAt: nowIso,
+          message: "Estado de pedido actualizado correctamente.",
+        });
       }
 
       // Cobrar pedido en caja: cambia a 'pagado', registra medio de pago y fecha de cobro
@@ -959,12 +1257,16 @@ export default async function handler(req, res) {
 
       // Crear un nuevo código de activación para un comercio
       if (body.action === "createActivationCode") {
-        const { code, businessName, ownerName, whatsapp, plan, notes } = body;
+        const { code, businessName, ownerName, whatsapp, plan, notes, cost, costFormatted, durationMonths, expiresAt } = body;
         const normalizedCode = (
           code && String(code).trim()
             ? String(code).trim().toUpperCase()
             : `CAS-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`
         ).replace(/\s+/g, "");
+
+        const durMonths = Number(durationMonths) || (String(plan).toLowerCase().includes("semestral") ? 6 : String(plan).toLowerCase().includes("anual") ? 12 : 1);
+        const expDate = expiresAt || new Date(Date.now() + durMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
+        const costStr = costFormatted || (cost ? `${Number(cost).toLocaleString("es-PY")} Gs.` : "");
 
         const newCodeObj = {
           id: "ACT-" + Date.now().toString().slice(-6),
@@ -973,6 +1275,10 @@ export default async function handler(req, res) {
           ownerName: (ownerName && String(ownerName).trim()) || "Responsable de Comercio",
           whatsapp: (whatsapp && String(whatsapp).trim()) || "",
           plan: (plan && String(plan).trim()) || "Plan Mensual",
+          cost: cost || 0,
+          costFormatted: costStr,
+          durationMonths: durMonths,
+          expiresAt: expDate,
           status: "disponible", // "disponible" | "activado" | "revocado"
           createdAt: new Date().toISOString(),
           activatedAt: null,
@@ -1087,6 +1393,16 @@ export default async function handler(req, res) {
           }
         }
 
+        if (memoryConfig && memoryConfig.business) {
+          memoryConfig.business.licenseCode = target.code;
+          memoryConfig.business.licensePlan = target.plan;
+          memoryConfig.business.licenseCost = target.costFormatted || memoryConfig.business.licenseCost;
+          memoryConfig.business.licenseDuration = target.durationMonths ? `${target.durationMonths} meses` : memoryConfig.business.licenseDuration;
+          memoryConfig.business.licenseActivatedAt = target.activatedAt || nowIso;
+          memoryConfig.business.licenseExpiresAt = target.expiresAt || memoryConfig.business.licenseExpiresAt;
+          memoryConfig.business.licenseStatus = "activado";
+        }
+
         return sendJson(res, 200, {
           ok: true,
           message: "¡Comercio habilitado con éxito! Tu aplicación ya está activa y autorizada.",
@@ -1094,28 +1410,43 @@ export default async function handler(req, res) {
             code: target.code,
             businessName: target.businessName,
             plan: target.plan,
+            costFormatted: target.costFormatted || "1.000.000 Gs. / año",
+            durationMonths: target.durationMonths || 12,
+            expiresAt: target.expiresAt,
             activatedAt: target.activatedAt || nowIso,
             ownerName: target.ownerName,
           },
         });
       }
 
-      // Actualizar estado de código (disponible, activado, revocado)
+      // Actualizar estado de código (disponible, activado, revocado, anulado)
       if (body.action === "updateActivationCodeStatus") {
-        const { codeId, status } = body;
+        const { codeId, status, extendMonths } = body;
         const normalized =
           status === "activado" || status === "active"
             ? "activado"
-            : status === "revocado" || status === "rejected"
+            : status === "revocado" || status === "rejected" || status === "anulado"
             ? "revocado"
             : "disponible";
 
-        const target = memoryActivationCodes.find((c) => c.id === codeId);
+        const target = memoryActivationCodes.find((c) => c.id === codeId || c.code === codeId);
         if (target) {
           target.status = normalized;
           if (normalized === "disponible") {
             target.activatedAt = null;
             target.activatedBy = null;
+          }
+          if (normalized === "activado" && extendMonths) {
+            const base = (target.expiresAt && new Date(target.expiresAt).getTime() > Date.now())
+              ? new Date(target.expiresAt).getTime()
+              : Date.now();
+            target.expiresAt = new Date(base + Number(extendMonths) * 30 * 24 * 3600000).toISOString();
+          }
+
+          // Si el código actualizado corresponde al comercio actual
+          if (target.id === "ACT-101" || target.code === memoryConfig.license_code) {
+            memoryConfig.license_status = normalized;
+            if (target.expiresAt) memoryConfig.license_expires_at = target.expiresAt;
           }
         }
 
@@ -1124,23 +1455,54 @@ export default async function handler(req, res) {
             await sql`
               UPDATE activation_codes
               SET status = ${normalized}
-              WHERE id = ${codeId}
+              WHERE id = ${codeId} OR code = ${codeId}
             `;
           } catch (dbErr) {
             console.warn("[AI Studio] Error actualizando estado de código en DB:", dbErr);
           }
         }
 
-        return sendJson(res, 200, { ok: true, status: normalized });
+        return sendJson(res, 200, { ok: true, status: normalized, target });
       }
 
-      // Eliminar código de activación
+      // Renovar suscripción / ampliar vencimiento desde Panel Administrador
+      if (body.action === "renewActivationCode") {
+        const { codeId, extendMonths, newExpiresAt, newPlan, newCost } = body;
+        const target = memoryActivationCodes.find((c) => c.id === codeId || c.code === codeId);
+        if (target) {
+          target.status = "activado";
+          if (newExpiresAt) {
+            target.expiresAt = newExpiresAt;
+          } else if (extendMonths) {
+            const base = (target.expiresAt && new Date(target.expiresAt).getTime() > Date.now())
+              ? new Date(target.expiresAt).getTime()
+              : Date.now();
+            target.expiresAt = new Date(base + Number(extendMonths) * 30 * 24 * 3600000).toISOString();
+          }
+          if (newPlan) target.plan = newPlan;
+          if (newCost) target.costFormatted = newCost;
+
+          if (target.id === "ACT-101" || target.code === memoryConfig.license_code) {
+            memoryConfig.license_status = "activado";
+            memoryConfig.license_expires_at = target.expiresAt;
+            if (newPlan) memoryConfig.license_plan = newPlan;
+            if (newCost) memoryConfig.license_cost = newCost;
+          }
+        }
+        return sendJson(res, 200, { ok: true, target });
+      }
+
+      // Eliminar código de activación o suscripción
       if (body.action === "deleteActivationCode") {
         const { codeId } = body;
-        memoryActivationCodes = memoryActivationCodes.filter((c) => c.id !== codeId);
+        const target = memoryActivationCodes.find((c) => c.id === codeId || c.code === codeId);
+        if (target && (target.id === "ACT-101" || target.code === memoryConfig.license_code)) {
+          memoryConfig.license_status = "anulado";
+        }
+        memoryActivationCodes = memoryActivationCodes.filter((c) => c.id !== codeId && c.code !== codeId);
         if (sql) {
           try {
-            await sql`DELETE FROM activation_codes WHERE id = ${codeId}`;
+            await sql`DELETE FROM activation_codes WHERE id = ${codeId} OR code = ${codeId}`;
           } catch (dbErr) {
             console.warn("[AI Studio] Error eliminando código en DB:", dbErr);
           }
@@ -1164,6 +1526,10 @@ export default async function handler(req, res) {
         if (b.newPin && String(b.newPin).trim()) {
           memoryConfig.pin = String(b.newPin).trim();
         }
+        if (b.licensePlan !== undefined) memoryConfig.license_plan = b.licensePlan;
+        if (b.licenseCost !== undefined) memoryConfig.license_cost = b.licenseCost;
+        if (b.licenseStatus !== undefined) memoryConfig.license_status = b.licenseStatus;
+        if (b.licenseExpiresAt !== undefined) memoryConfig.license_expires_at = b.licenseExpiresAt;
       }
 
       if (body.deliveryNote !== undefined) {
