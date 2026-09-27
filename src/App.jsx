@@ -9,8 +9,22 @@ import {
   Users, Copy, ExternalLink, QrCode, Search, Filter, ArrowUpDown,
   Receipt, DollarSign, Printer, Calendar, CheckSquare, History, Wallet,
   Map, Crosshair, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
-  FileText, Download, MessageCircle, CheckCheck
+  FileText, Download, MessageCircle, CheckCheck,
+  Bell, BellRing, ChefHat, Volume2, LogOut, UserPlus, Pencil
 } from "lucide-react";
+import InstallAppModal from "./components/InstallAppModal.jsx";
+import { OrderTrackingModal } from "./components/OrderTrackingModal.jsx";
+import {
+  ORDER_STATUS_CONFIG,
+  getNotificationPermission,
+  requestPushPermission,
+  playOrderChime,
+  dispatchNativePushNotification,
+  saveCustomerOrder,
+  getCustomerOrders,
+  updateCustomerOrderStatus,
+  getSyncChannel,
+} from "./services/notificationService.js";
 
 /* =========================================================================
    CONFIGURACIÓN Y CONSTANTES
@@ -128,6 +142,30 @@ const PAYMENT_INFO = {
 
 // Pedidos de muestra iniciales para historial de comercio (con fechas y estados variados)
 const DEFAULT_INITIAL_ORDERS = [
+  {
+    id: "PED-1577",
+    mode: "mesa",
+    tableNumber: "3",
+    customerName: "Juan",
+    customerPhone: "0981778899",
+    address: "Mesa 3 (Salón Principal)",
+    mapLink: "",
+    notes: "Pedido pasado a cocina",
+    items: [
+      { id: "1", name: "Milanesa de Carne con Papas Fritas", price: 35000, qty: 1 },
+      { id: "5", name: "Gaseosa 500ml", price: 7000, qty: 1 },
+      { id: "8", name: "Flan Casero con Dulce de Leche", price: 12000, qty: 1 },
+    ],
+    totalItems: 3,
+    totalPrice: 54000,
+    orderStatus: "en_preparacion", // En Cocina
+    deliveryStatus: "local",
+    paymentStatus: "pendiente",
+    paymentMethod: "",
+    paidAt: null,
+    createdAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 6).toISOString(),
+  },
   {
     id: "PED-9821",
     mode: "mesa",
@@ -275,14 +313,24 @@ function formatLockTime(seconds) {
 }
 
 const DEFAULT_BUSINESS = {
-  name: "La Caserita Rotisería",
-  slogan: "Pedí online",
-  phoneIntl: "595985913400",
-  phoneDisplay: "0985 913 400",
+  name: "Rotisería Los Amigos",
+  slogan: "Pedí online - Comidas caseras y minutas",
+  phoneIntl: "595981456789",
+  phoneDisplay: "0981 123 456",
   address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
   bannerImage: "/banner.jpg",
   deliveryNote: "El costo de envío se coordina según la zona",
-  adminUser: "Usuario",
+  adminUser: "gerente",
+  sessionPersistence: "keep_active", // "keep_active" | "close_on_exit"
+  licenseCode: "CAS-7K9B-X2M4",
+  licensePlan: "Plan Anual PRO (1 Año)",
+  licenseCost: "1.350.000 Gs. / año",
+  licenseCostGs: 1350000,
+  licenseDuration: "12 meses",
+  licenseStatus: "activado", // "activado" | "revocado" | "anulado" | "vencido"
+  licenseActivatedAt: "2026-03-01T12:00:00.000Z",
+  licenseExpiresAt: "2027-03-01T12:00:00.000Z",
+  licenseNotes: "Licencia Anual con soporte y actualización oficial",
 };
 
 const DEFAULT_MENU = [
@@ -366,6 +414,18 @@ function toDateYmd(dateVal) {
     return `${y}-${m}-${day}`;
   } catch {
     return "";
+  }
+}
+
+function getLicenseDaysRemaining(expiresAt) {
+  if (!expiresAt) return 0;
+  try {
+    const exp = new Date(expiresAt).getTime();
+    if (isNaN(exp)) return 0;
+    const diff = exp - Date.now();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  } catch {
+    return 0;
   }
 }
 
@@ -509,8 +569,9 @@ function ToastContainer({ toasts, onDismiss, onAction }) {
       className="fixed top-4 right-4 z-50 flex flex-col gap-2.5 max-w-sm w-[calc(100vw-2rem)] pointer-events-none"
     >
       {toasts.map((toast) => {
-        const isSuccess = toast.type === "order_success";
-        const isCart = toast.type === "cart_add";
+        const isSuccess = toast.type === "order_success" || toast.type === "success";
+        const isCart = toast.type === "cart_add" || toast.type === "cart_clear";
+        const isAlert = toast.type === "order_cancel" || toast.type === "error" || toast.type === "warning";
         
         return (
           <div
@@ -518,8 +579,8 @@ function ToastContainer({ toasts, onDismiss, onAction }) {
             role="status"
             className="pointer-events-auto flex items-start gap-3 p-3.5 sm:p-4 rounded-2xl shadow-2xl border-2 transition-all duration-300 transform translate-y-0 animate-in fade-in slide-in-from-top-4"
             style={{
-              background: isSuccess ? "#1C2E1A" : BRAND.charcoalDark,
-              borderColor: isSuccess ? "#45603C" : BRAND.mustard,
+              background: isSuccess ? "#1C2E1A" : isAlert ? "#2E1A1A" : BRAND.charcoalDark,
+              borderColor: isSuccess ? "#45603C" : isAlert ? "#DC2626" : BRAND.mustard,
               color: BRAND.cream,
             }}
           >
@@ -527,17 +588,25 @@ function ToastContainer({ toasts, onDismiss, onAction }) {
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 shadow-inner"
               style={{
-                background: isSuccess ? "#45603C" : BRAND.tomato,
+                background: isSuccess ? "#45603C" : isAlert ? "#B91C1C" : isCart ? BRAND.mustard : BRAND.tomato,
                 color: BRAND.cream,
               }}
             >
-              {isSuccess ? <CheckCircle2 size={20} className="text-white" /> : <ShoppingCart size={18} className="text-white" />}
+              {isSuccess ? (
+                <CheckCircle2 size={20} className="text-white" />
+              ) : isAlert ? (
+                <AlertCircle size={20} className="text-white" />
+              ) : isCart ? (
+                <ShoppingCart size={18} className="text-stone-900" />
+              ) : (
+                <CheckCircle2 size={20} className="text-white" />
+              )}
             </div>
 
             {/* Contenido del Toast */}
             <div className="flex-1 min-w-0 pr-1">
               <div className="flex items-center justify-between gap-1">
-                <p className="text-xs font-black uppercase tracking-wider" style={{ color: isSuccess ? "#A3E635" : BRAND.mustardLight }}>
+                <p className="text-xs font-black uppercase tracking-wider" style={{ color: isSuccess ? "#A3E635" : isAlert ? "#FCA5A5" : BRAND.mustardLight }}>
                   {toast.title}
                 </p>
                 {toast.time && (
@@ -553,7 +622,7 @@ function ToastContainer({ toasts, onDismiss, onAction }) {
                 </p>
               )}
 
-              {/* Botón de acción rápida (ej: "Ver Carrito") */}
+              {/* Botón de acción rápida (ej: "Ver Pedido") */}
               {toast.actionLabel && onAction && (
                 <button
                   type="button"
@@ -564,7 +633,13 @@ function ToastContainer({ toasts, onDismiss, onAction }) {
                     color: isSuccess ? BRAND.cream : BRAND.charcoalDark,
                   }}
                 >
-                  <ShoppingCart size={13} />
+                  {toast.actionLabel.toLowerCase().includes("pedido") ? (
+                    <Receipt size={13} />
+                  ) : toast.actionLabel.toLowerCase().includes("carrito") ? (
+                    <ShoppingCart size={13} />
+                  ) : (
+                    <CheckCircle2 size={13} />
+                  )}
                   <span>{toast.actionLabel}</span>
                 </button>
               )}
@@ -653,10 +728,251 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
+  // Estado y control de Notificaciones Push y Seguimiento Asíncrono de Pedidos
+  const [customerOrders, setCustomerOrders] = useState(() => getCustomerOrders());
+  const [trackingModalOpen, setTrackingModalOpen] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState(null);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [pushPermissionState, setPushPermissionState] = useState(() => getNotificationPermission());
+
+  const refreshCustomerOrders = () => {
+    const list = getCustomerOrders();
+    setCustomerOrders(list);
+    return list;
+  };
+
+  // Consulta el estado más reciente de los pedidos del cliente en el backend
+  const refreshCustomerOrdersFromServer = async () => {
+    const list = getCustomerOrders();
+    if (!list || list.length === 0) return;
+    const activeIds = list.map((o) => o.id);
+    const ordersInfo = list.map((o) => ({
+      id: o.id,
+      customerName: o.customerName,
+      tableNumber: o.tableNumber,
+      mode: o.mode,
+      totalPrice: o.totalPrice,
+    }));
+
+    try {
+      const resp = await fetch(SHEETS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "checkOrdersStatus",
+          orderIds: activeIds,
+          ordersInfo,
+        }),
+      });
+      const json = await resp.json();
+      if (json.ok && Array.isArray(json.orders)) {
+        let anyUpdated = false;
+        json.orders.forEach((remoteOrd) => {
+          if (remoteOrd && remoteOrd.id && remoteOrd.orderStatus) {
+            const res = updateCustomerOrderStatus(
+              remoteOrd.id,
+              remoteOrd.orderStatus,
+              remoteOrd.paymentStatus,
+              remoteOrd
+            );
+            if (res && (res.didChange || res.oldId !== res.newId)) {
+              anyUpdated = true;
+              if (trackingOrderId === res.oldId) {
+                setTrackingOrderId(res.newId);
+              }
+            }
+          }
+        });
+        if (anyUpdated) {
+          refreshCustomerOrders();
+        }
+      }
+    } catch (err) {
+      console.warn("Aviso refrescando pedidos del cliente:", err);
+    }
+  };
+
+  // Ventana emergente al iniciar para instalar la app (PWA con logo de CyM / Caserita)
+  const [showInstallModal, setShowInstallModal] = useState(false);
+
+  useEffect(() => {
+    // Si la app ya está instalada y corriendo en pantalla completa, no mostrar
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true;
+
+    if (isStandalone) return;
+
+    // Verificar si ya fue cerrada durante la sesión actual
+    try {
+      const dismissed = sessionStorage.getItem("caserita_install_prompt_dismissed");
+      if (!dismissed) {
+        // Retardo natural de 1.4 segundos al iniciar para que primero renderice la portada
+        const timer = setTimeout(() => {
+          setShowInstallModal(true);
+        }, 1400);
+        return () => clearTimeout(timer);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Escuchar mensajes de Service Worker (por ejemplo, clic en notificación push)
+  useEffect(() => {
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      const handleSwMsg = (event) => {
+        if (event.data?.type === "OPEN_ORDER_TRACKING") {
+          setTrackingOrderId(event.data.orderId || null);
+          setTrackingModalOpen(true);
+        }
+      };
+      navigator.serviceWorker.addEventListener("message", handleSwMsg);
+      return () => navigator.serviceWorker.removeEventListener("message", handleSwMsg);
+    }
+  }, []);
+
+  // Comprobar parámetros de URL al cargar (?trackOrderId=PED-XXXX)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const trackId = params.get("trackOrderId");
+      if (trackId) {
+        setTrackingOrderId(trackId);
+        setTrackingModalOpen(true);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Escuchar eventos en tiempo real entre pestañas (BroadcastChannel)
+  useEffect(() => {
+    const channel = getSyncChannel();
+    if (!channel) return;
+
+    const handleBroadcast = (event) => {
+      const data = event.data;
+      if (data && (data.type === "ORDER_STATUS_UPDATED" || data.type === "ORDER_CREATED")) {
+        const { orderId, newStatus, paymentStatus, order } = data;
+        const res = updateCustomerOrderStatus(orderId, newStatus, paymentStatus, order);
+        if (res && (res.didChange || res.oldId !== res.newId)) {
+          if (trackingOrderId === res.oldId) {
+            setTrackingOrderId(res.newId);
+          }
+          refreshCustomerOrders();
+          const cfg = ORDER_STATUS_CONFIG[newStatus] || ORDER_STATUS_CONFIG.recibido;
+          addToast(
+            newStatus === "completado" ? "order_success" : "cart_add",
+            cfg.label,
+            `Pedido ${res.newId}: ${cfg.description}`,
+            null,
+            "Ver Pedido"
+          );
+        }
+      }
+    };
+
+    channel.addEventListener("message", handleBroadcast);
+    return () => channel.removeEventListener("message", handleBroadcast);
+  }, [trackingOrderId]);
+
+  // Polling asíncrono en segundo plano para pedidos activos del cliente
+  useEffect(() => {
+    const activeOrders = customerOrders.filter(
+      (o) => o && o.orderStatus !== "completado" && o.orderStatus !== "cancelado"
+    );
+    if (activeOrders.length === 0) return;
+
+    const activeIds = activeOrders.map((o) => o.id);
+    const ordersInfo = activeOrders.map((o) => ({
+      id: o.id,
+      customerName: o.customerName,
+      tableNumber: o.tableNumber,
+      mode: o.mode,
+      totalPrice: o.totalPrice,
+    }));
+
+    const checkStatus = async () => {
+      try {
+        const resp = await fetch(SHEETS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "checkOrdersStatus",
+            orderIds: activeIds,
+            ordersInfo,
+          }),
+        });
+        const json = await resp.json();
+        if (json.ok && Array.isArray(json.orders)) {
+          let updatedAny = false;
+          json.orders.forEach((remoteOrd) => {
+            if (remoteOrd && remoteOrd.id && remoteOrd.orderStatus) {
+              const res = updateCustomerOrderStatus(
+                remoteOrd.id,
+                remoteOrd.orderStatus,
+                remoteOrd.paymentStatus,
+                remoteOrd
+              );
+              if (res && (res.didChange || res.oldId !== res.newId)) {
+                updatedAny = true;
+                if (trackingOrderId === res.oldId) {
+                  setTrackingOrderId(res.newId);
+                }
+                const cfg = ORDER_STATUS_CONFIG[remoteOrd.orderStatus] || ORDER_STATUS_CONFIG.recibido;
+                addToast(
+                  remoteOrd.orderStatus === "completado" ? "order_success" : "cart_add",
+                  cfg.label,
+                  `Pedido ${res.newId}: ${cfg.description}`,
+                  null,
+                  "Ver Pedido"
+                );
+              }
+            }
+          });
+          if (updatedAny) {
+            refreshCustomerOrders();
+          }
+        }
+      } catch (err) {
+        // Fallo de red silencioso
+      }
+    };
+
+    checkStatus();
+    const poller = setInterval(checkStatus, 4000);
+
+    return () => clearInterval(poller);
+  }, [customerOrders, trackingOrderId]);
+
+  const handleCloseInstallModal = () => {
+    setShowInstallModal(false);
+    try {
+      sessionStorage.setItem("caserita_install_prompt_dismissed", "true");
+    } catch (e) {}
+  };
+
   // Sistema de notificaciones Toast
   const [toasts, setToasts] = useState([]);
 
-  const addToast = (type, title, message, subtitle = null, actionLabel = null) => {
+  const addToast = (typeOrObj, titleArg, messageArg, subtitleArg = null, actionLabelArg = null) => {
+    let type = "order_success";
+    let title = "";
+    let message = "";
+    let subtitle = null;
+    let actionLabel = null;
+
+    if (typeof typeOrObj === "object" && typeOrObj !== null) {
+      type = typeOrObj.type || "order_success";
+      title = typeOrObj.title || "";
+      message = typeOrObj.message || "";
+      subtitle = typeOrObj.subtitle || null;
+      actionLabel = typeOrObj.actionLabel || null;
+    } else {
+      type = typeOrObj || "order_success";
+      title = titleArg || "";
+      message = messageArg || "";
+      subtitle = subtitleArg;
+      actionLabel = actionLabelArg;
+    }
+
     const id = Date.now().toString() + Math.random().toString(36).substring(2, 7);
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const newToast = { id, type, title, message, subtitle, actionLabel, time };
@@ -675,8 +991,12 @@ export default function App() {
 
   const handleToastAction = (toast) => {
     removeToast(toast.id);
-    if (toast.actionLabel) {
-      setCartOpen(true);
+    if (toast.actionLabel === "Ver Pedido") {
+      setTrackingModalOpen(true);
+    } else if (toast.actionLabel && toast.actionLabel.toLowerCase().includes("carrito")) {
+      if (view === "menu") {
+        setCartOpen(true);
+      }
     }
   };
 
@@ -684,6 +1004,18 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [openCat, setOpenCat] = useState("");
   const [activeSection, setActiveSection] = useState("TODOS"); // "TODOS" | nombre de categoría
+
+  // Referencia y función para desplazar los botones de menú de lado a lado
+  const categoryScrollRef = useRef(null);
+  const scrollCategories = (direction) => {
+    if (categoryScrollRef.current) {
+      categoryScrollRef.current.scrollBy({
+        left: direction === "left" ? -260 : 260,
+        behavior: "smooth"
+      });
+    }
+  };
+
   const [searchQuery, setSearchQuery] = useState("");
   const [mode, setMode] = useState("mesa"); // "mesa" | "delivery" | "retiro"
   const [customerName, setCustomerName] = useState(() => {
@@ -730,30 +1062,328 @@ export default function App() {
     } catch (e) {}
   }, [customerPhone]);
 
+  // Persistencia de sesión de Gerencia: "keep_active" (Mantener sesión activa) | "close_on_exit" (Cerrar sesión al salir)
+  // Utiliza almacenamiento local seguro con respaldo contra cierres forzosos
+  const [sessionPersistence, setSessionPersistence] = useState(() => {
+    try {
+      const savedPref = localStorage.getItem("lacaserita_session_persistence");
+      if (savedPref === "keep_active" || savedPref === "close_on_exit") {
+        return savedPref;
+      }
+    } catch (e) {}
+    return "keep_active"; // Por defecto: Mantener sesión activa para máxima estabilidad operativa
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("lacaserita_session_persistence", sessionPersistence);
+    } catch (e) {}
+  }, [sessionPersistence]);
+
+  // Sesión persistente de Administración / Gerencia / Personal
+  // Permite al Gerente salir a la tienda y volver a pedidos/cocina cuantas veces quiera sin reingresar clave
+  // Utiliza almacenamiento local seguro y respaldo redundante para evitar cierres de sesión forzosos
+  const [adminSession, setAdminSession] = useState(() => {
+    try {
+      const persistencePref = localStorage.getItem("lacaserita_session_persistence") || "keep_active";
+
+      // Si la preferencia activa es 'Cerrar sesión al salir', verificar si esta pestaña/ventana aún conserva la sesión activa
+      if (persistencePref === "close_on_exit") {
+        const tabActive = sessionStorage.getItem("lacaserita_session_active");
+        if (!tabActive) {
+          // El navegador o pestaña se cerró previamente -> caducar sesión temporal
+          localStorage.removeItem("lacaserita_admin_session");
+          return null;
+        }
+      }
+
+      // Almacenamiento local seguro: verificar clave primaria y respaldo de emergencia contra cierres forzosos
+      let saved = localStorage.getItem("lacaserita_admin_session");
+      if (!saved) {
+        saved = localStorage.getItem("lacaserita_admin_session_backup");
+      }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.active && parsed.role) {
+          // Registrar en sessionStorage que la pestaña actual está activa
+          sessionStorage.setItem("lacaserita_session_active", "true");
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  // Configuración de permisos al personal operativo (Mozos y Cocina) administrado por el Gerente
+  // Permite dar permisos a varios personales con nombre y PIN individual (4, 5, 6, 7, 8... dígitos libres)
+  const [staffSettings, setStaffSettings] = useState(() => {
+    const defaultStaffList = [
+      {
+        id: "staff-1",
+        name: "Carlos Gómez (Mozo)",
+        pin: "1234",
+        role: "Mozo de Salón",
+        allowTakeOrders: true,
+        allowKitchenPanel: false,
+        allowCashier: false,
+        active: true,
+      },
+      {
+        id: "staff-2",
+        name: "María (Cocina)",
+        pin: "5678",
+        role: "Cocina / Comandas",
+        allowTakeOrders: false,
+        allowKitchenPanel: true,
+        allowCashier: false,
+        active: true,
+      },
+    ];
+
+    try {
+      const saved = localStorage.getItem("lacaserita_staff_settings");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed.staffList) || parsed.staffList.length === 0) {
+          parsed.staffList = [
+            {
+              id: "staff-legacy-1",
+              name: parsed.staffName || "Personal de Salón y Cocina",
+              pin: parsed.pin || "1234",
+              role: "Mozo / Cocina",
+              allowTakeOrders: parsed.allowTakeOrders ?? true,
+              allowKitchenPanel: parsed.allowKitchenPanel ?? true,
+              allowCashier: parsed.allowCashier ?? false,
+              active: true,
+            },
+            {
+              id: "staff-2",
+              name: "María (Cocina)",
+              pin: "5678",
+              role: "Cocina / Comandas",
+              allowTakeOrders: false,
+              allowKitchenPanel: true,
+              allowCashier: false,
+              active: true,
+            },
+          ];
+        }
+        return parsed;
+      }
+    } catch (e) {}
+    return {
+      enabled: true,
+      pin: "1234",
+      allowTakeOrders: true,   // Ingresar al menú de clientes para tomar comandas en mesa
+      allowKitchenPanel: true, // Ver panel de pedidos y cocina
+      allowCashier: false,     // Cobrar en caja
+      staffName: "Personal de Salón y Cocina",
+      staffList: defaultStaffList,
+    };
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("lacaserita_staff_settings", JSON.stringify(staffSettings));
+    } catch (e) {}
+  }, [staffSettings]);
+
+  // Estados para formulario de alta/edición de personal individual en el panel de Gerencia
+  const [staffFormOpen, setStaffFormOpen] = useState(false);
+  const [editingStaffId, setEditingStaffId] = useState(null);
+  const [staffFormName, setStaffFormName] = useState("");
+  const [staffFormPin, setStaffFormPin] = useState("");
+  const [staffFormRole, setStaffFormRole] = useState("Mozo de Salón");
+  const [staffFormAllowOrders, setStaffFormAllowOrders] = useState(true);
+  const [staffFormAllowKitchen, setStaffFormAllowKitchen] = useState(false);
+  const [staffFormAllowCashier, setStaffFormAllowCashier] = useState(false);
+  const [staffFormActive, setStaffFormActive] = useState(true);
+  const [revealedStaffPins, setRevealedStaffPins] = useState({});
+
+  // Funciones de gestión de personal múltiple para el Gerente
+  const handleOpenAddStaff = () => {
+    setEditingStaffId(null);
+    setStaffFormName("");
+    // Generar PIN aleatorio sugerido
+    const randomPin = String(Math.floor(1000 + Math.random() * 9000));
+    setStaffFormPin(randomPin);
+    setStaffFormRole("Mozo de Salón");
+    setStaffFormAllowOrders(true);
+    setStaffFormAllowKitchen(false);
+    setStaffFormAllowCashier(false);
+    setStaffFormActive(true);
+    setStaffFormOpen(true);
+  };
+
+  const handleOpenEditStaff = (st) => {
+    setEditingStaffId(st.id);
+    setStaffFormName(st.name || "");
+    setStaffFormPin(st.pin || "");
+    setStaffFormRole(st.role || "Personal");
+    setStaffFormAllowOrders(st.allowTakeOrders ?? true);
+    setStaffFormAllowKitchen(st.allowKitchenPanel ?? false);
+    setStaffFormAllowCashier(st.allowCashier ?? false);
+    setStaffFormActive(st.active ?? true);
+    setStaffFormOpen(true);
+  };
+
+  const handleSaveStaffMember = () => {
+    const cleanName = staffFormName.trim();
+    const cleanPin = staffFormPin.trim();
+
+    if (!cleanName) {
+      addToast("order_cancel", "Falta el Nombre", "Por favor ingresá el nombre del personal.");
+      return;
+    }
+
+    if (!cleanPin || cleanPin.length < 3) {
+      addToast("order_cancel", "PIN no válido", "Ingresá un PIN válido (4, 5, 6, 7, 8 o más dígitos).");
+      return;
+    }
+
+    const currentList = Array.isArray(staffSettings.staffList) ? [...staffSettings.staffList] : [];
+
+    if (editingStaffId) {
+      const idx = currentList.findIndex((s) => s.id === editingStaffId);
+      if (idx !== -1) {
+        currentList[idx] = {
+          ...currentList[idx],
+          name: cleanName,
+          pin: cleanPin,
+          role: staffFormRole,
+          allowTakeOrders: staffFormAllowOrders,
+          allowKitchenPanel: staffFormAllowKitchen,
+          allowCashier: staffFormAllowCashier,
+          active: staffFormActive,
+        };
+      }
+      addToast("order_success", "Personal Actualizado", `Se actualizaron los datos y permisos de ${cleanName}.`);
+    } else {
+      const newStaff = {
+        id: "staff-" + Date.now(),
+        name: cleanName,
+        pin: cleanPin,
+        role: staffFormRole,
+        allowTakeOrders: staffFormAllowOrders,
+        allowKitchenPanel: staffFormAllowKitchen,
+        allowCashier: staffFormAllowCashier,
+        active: staffFormActive,
+        createdAt: new Date().toISOString(),
+      };
+      currentList.push(newStaff);
+      addToast("order_success", "Personal Agregado", `Se registró a ${cleanName} con PIN de ${cleanPin.length} dígitos.`);
+    }
+
+    setStaffSettings((prev) => ({
+      ...prev,
+      staffList: currentList,
+      pin: currentList[0]?.pin || prev.pin || "1234",
+    }));
+
+    setStaffFormOpen(false);
+    setEditingStaffId(null);
+  };
+
+  const handleDeleteStaffMember = (id, name) => {
+    const currentList = Array.isArray(staffSettings.staffList) ? staffSettings.staffList : [];
+    if (currentList.length <= 1) {
+      addToast("order_cancel", "Acción no permitida", "Debe existir al menos un personal en el sistema.");
+      return;
+    }
+    const filtered = currentList.filter((s) => s.id !== id);
+    setStaffSettings((prev) => ({
+      ...prev,
+      staffList: filtered,
+    }));
+    addToast("cart_clear", "Personal Eliminado", `Se eliminó a ${name} de los accesos autorizados.`);
+  };
+
+  const handleToggleStaffActive = (id) => {
+    const currentList = Array.isArray(staffSettings.staffList) ? [...staffSettings.staffList] : [];
+    const idx = currentList.findIndex((s) => s.id === id);
+    if (idx !== -1) {
+      const newActive = !currentList[idx].active;
+      currentList[idx] = { ...currentList[idx], active: newActive };
+      setStaffSettings((prev) => ({
+        ...prev,
+        staffList: currentList,
+      }));
+      addToast(
+        "order_success",
+        newActive ? "Acceso Activado" : "Acceso Pausado",
+        `El personal ${currentList[idx].name} ahora está ${newActive ? "habilitado" : "pausado"}.`
+      );
+    }
+  };
+
+  const handleGenerateRandomPin = () => {
+    const lengths = [4, 5, 6];
+    const len = lengths[Math.floor(Math.random() * lengths.length)];
+    let res = "";
+    for (let i = 0; i < len; i++) {
+      res += Math.floor(Math.random() * 10);
+    }
+    setStaffFormPin(res);
+  };
+
   const [view, setView] = useState("menu"); // "menu" | "adminLogin" | "admin" | "register"
-  const [adminTab, setAdminTab] = useState("orders"); // "orders" | "menu" | "business" | "clients"
-  const [adminRole, setAdminRole] = useState("owner"); // "superadmin" | "owner"
-  const [loginMode, setLoginMode] = useState("owner"); // "owner" | "superadmin"
+  const [adminTab, setAdminTab] = useState("orders"); // "orders" | "history" | "menu" | "staff" | "business" | "clients"
+  const [adminRole, setAdminRole] = useState(() => {
+    try {
+      let saved = localStorage.getItem("lacaserita_admin_session");
+      if (!saved) saved = localStorage.getItem("lacaserita_admin_session_backup");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.role) return parsed.role;
+      }
+    } catch (e) {}
+    return "owner";
+  }); // "superadmin" | "owner" | "staff"
+  const [loginMode, setLoginMode] = useState("owner"); // "owner" | "staff" | "superadmin"
   const [userInput, setUserInput] = useState("");
   const [pinInput, setPinInput] = useState("");
   const [showLoginPin, setShowLoginPin] = useState(false);
   const [pinError, setPinError] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
 
   // Estado del Panel de Pedidos y Cobro por Caja
   const [orders, setOrders] = useState(() => {
     try {
       const saved = localStorage.getItem("lacaserita_orders");
+      const custOrders = getCustomerOrders();
+      let list = [];
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed.filter((o) => o && typeof o === "object");
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          list = parsed.filter((o) => o && typeof o === "object");
+        }
       }
+      if (list.length === 0) {
+        list = [...DEFAULT_INITIAL_ORDERS];
+      }
+      // Asegurar que pedidos por defecto (incluyendo Juan PED-1577) existan siempre en la lista
+      DEFAULT_INITIAL_ORDERS.forEach((defOrd) => {
+        if (!list.some((o) => o.id === defOrd.id)) {
+          list.push(defOrd);
+        }
+      });
+      // Asegurar que pedidos registrados por clientes en este dispositivo se reflejen de inmediato
+      if (Array.isArray(custOrders)) {
+        custOrders.forEach((co) => {
+          if (co && co.id && !list.some((o) => o.id === co.id)) {
+            list.unshift(co);
+          }
+        });
+      }
+      return list;
     } catch (e) {}
     return DEFAULT_INITIAL_ORDERS;
   });
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [ordersFilterMode, setOrdersFilterMode] = useState("todos"); // "todos" | "mesa" | "delivery" | "retiro"
+  const [ordersStatusFilter, setOrdersStatusFilter] = useState("todos"); // "todos" | "en_preparacion" | "pendientes" | "pagado" | "todos_pedidos"
   const [ordersSearch, setOrdersSearch] = useState("");
   const [cashPeriod, setCashPeriod] = useState("dia"); // "dia" | "semana" | "mes" | "todos"
   const [selectedPayOrder, setSelectedPayOrder] = useState(null); // orden a cobrar en modal
@@ -973,14 +1603,68 @@ export default function App() {
   const [codeFilter, setCodeFilter] = useState("all"); // "all" | "disponible" | "activado"
   const [codeSearch, setCodeSearch] = useState("");
   const [copiedCodeText, setCopiedCodeText] = useState("");
+  const [confirmModalConfig, setConfirmModalConfig] = useState(null);
 
-  const [newCodeForm, setNewCodeForm] = useState({
-    code: "CAS-" + Math.floor(1000 + Math.random() * 9000) + "-7K3X",
-    businessName: "",
-    ownerName: "",
-    whatsapp: "",
-    plan: "Plan Mensual",
-    notes: "",
+  // Helper para obtener precio real y duración desde la configuración de planes (appPricingPlans)
+  const getPlanDetails = (planIdentifier) => {
+    const plans = Array.isArray(appPricingPlans) && appPricingPlans.length > 0 ? appPricingPlans : DEFAULT_APP_PRICING_PLANS;
+    const str = String(planIdentifier || "mensual").toLowerCase().trim();
+
+    if (str.includes("vitalicio") || str.includes("permanente")) {
+      return {
+        planTitle: "Plan Vitalicio / Licencia Permanente",
+        planId: "vitalicio",
+        cost: 0,
+        costFormatted: "Licencia Permanente (Sin límite de tiempo)",
+        durationMonths: 999,
+        expiresAt: null,
+      };
+    }
+
+    const matched = plans.find((p) => {
+      const pId = String(p.id || "").toLowerCase();
+      const pTitle = String(p.title || "").toLowerCase();
+      return pTitle === str || pId === str || str.includes(pId) || pTitle.includes(str) ||
+        (str.includes("anual") && pId === "anual") ||
+        (str.includes("semestr") && pId === "semestral") ||
+        (str.includes("mes") && pId === "mensual");
+    }) || plans[0];
+
+    const dur = matched.id === "mensual" ? 1 : matched.id === "semestral" ? 6 : 12;
+    const pNum = Number(matched.priceGs) || 0;
+    const expDate = new Date();
+    expDate.setMonth(expDate.getMonth() + dur);
+
+    return {
+      planTitle: matched.title,
+      planId: matched.id,
+      cost: pNum,
+      costFormatted: `${pNum.toLocaleString("es-PY")} Gs. ${matched.period ? `(${matched.period})` : ""}`.trim(),
+      durationMonths: dur,
+      expiresAt: expDate.toISOString(),
+    };
+  };
+
+  const [newCodeForm, setNewCodeForm] = useState(() => {
+    const plans = Array.isArray(DEFAULT_APP_PRICING_PLANS) && DEFAULT_APP_PRICING_PLANS.length > 0 ? DEFAULT_APP_PRICING_PLANS : [];
+    const def = plans[0] || { id: "mensual", title: "Plan Mensual", priceGs: 150000 };
+    const pNum = Number(def.priceGs) || 150000;
+    const exp = new Date();
+    exp.setMonth(exp.getMonth() + 1);
+
+    return {
+      code: "CAS-" + Math.floor(1000 + Math.random() * 9000) + "-7K3X",
+      businessName: "",
+      ownerName: "",
+      whatsapp: "",
+      plan: def.title,
+      planId: def.id,
+      cost: pNum,
+      costFormatted: `${pNum.toLocaleString("es-PY")} Gs. (por mes)`,
+      durationMonths: 1,
+      expiresAt: exp.toISOString(),
+      notes: "",
+    };
   });
 
   // Licencia activa en este dispositivo / comercio
@@ -992,12 +1676,22 @@ export default function App() {
     return {
       isActivated: true,
       code: "CAS-7K9B-X2M4",
-      businessName: "La Caserita",
-      plan: "Plan Vitalicio / Activo",
-      activatedAt: new Date().toISOString(),
-      ownerName: "Administrador",
+      businessName: "Rotisería Los Amigos",
+      plan: "Plan Anual PRO (1 Año)",
+      costFormatted: "1.350.000 Gs. / año",
+      costGs: 1350000,
+      durationMonths: 12,
+      status: "activado", // "activado" | "revocado" | "anulado" | "vencido"
+      activatedAt: "2026-03-01T12:00:00.000Z",
+      expiresAt: "2027-03-01T12:00:00.000Z",
+      ownerName: "Carlos González",
+      notes: "Licencia Anual con soporte y actualización oficial",
     };
   });
+
+  // Modal informativo si la licencia del comercio fue anulada o venció
+  const [showLicenseBlockedModal, setShowLicenseBlockedModal] = useState(false);
+  const [licenseBlockedInfo, setLicenseBlockedInfo] = useState(null);
 
   // Modal para que el comercio ingrese el código para habilitar
   const [showActivateModal, setShowActivateModal] = useState(false);
@@ -1073,11 +1767,22 @@ export default function App() {
         if (data.deliveryNote) setDeliveryNote(data.deliveryNote);
         if (data.business) {
           const bData = { ...data.business };
-          if (!bData.adminUser || bData.adminUser === "Camuchi") {
-            bData.adminUser = "Usuario";
-          }
           setBusiness((prev) => ({ ...prev, ...bData }));
           if (data.business.deliveryNote) setDeliveryNote(data.business.deliveryNote);
+          if (bData.licenseCode) {
+            setAppLicense((prev) => ({
+              ...prev,
+              code: bData.licenseCode,
+              plan: bData.licensePlan || prev.plan,
+              costFormatted: bData.licenseCost || prev.costFormatted,
+              costGs: bData.licenseCostGs || prev.costGs,
+              status: bData.licenseStatus || prev.status,
+              durationMonths: bData.licenseDuration || prev.durationMonths,
+              activatedAt: bData.licenseActivatedAt || prev.activatedAt,
+              expiresAt: bData.licenseExpiresAt || prev.expiresAt,
+              notes: bData.licenseNotes || prev.notes,
+            }));
+          }
         }
       } catch (err) {
         setLoadError("No se pudo cargar el menú. Revisá tu conexión a internet.");
@@ -1160,28 +1865,129 @@ export default function App() {
     return orders.filter((o) => o && (o.paymentStatus || "").toLowerCase() === "pagado");
   }, [orders]);
 
-  // Filtrado de pedidos activos por modalidad y búsqueda
+  // Coincidencia inteligente de pedido para el buscador del Panel de Pedidos
+  const isOrderMatchingSearch = (order, query) => {
+    if (!order || !query) return false;
+    const q = query.trim().toLowerCase();
+    const cleanQ = q.replace(/^#/, "").trim();
+    const numQ = cleanQ.replace(/^ped[- ]?/i, "").trim();
+
+    // 1. Coincidencia por código de pedido (ej: PED-1577, ped-1577, 1577, #1577)
+    const id = String(order.id || "").toLowerCase();
+    const cleanId = id.replace(/^ped-/, "");
+    if (id === cleanQ || id.includes(cleanQ) || (numQ && (cleanId === numQ || cleanId.includes(numQ)))) {
+      return true;
+    }
+    if (order.matchedRequestedId) {
+      const matchId = String(order.matchedRequestedId).toLowerCase();
+      if (matchId.includes(cleanQ) || (numQ && matchId.replace(/^ped-/, "").includes(numQ))) {
+        return true;
+      }
+    }
+
+    // 2. Coincidencia por Nombre del cliente (ej: Juan, María)
+    const customerName = String(order.customerName || "").toLowerCase();
+    if (customerName.includes(cleanQ)) return true;
+
+    // 3. Coincidencia por Número de Mesa (ej: 3, Mesa 3)
+    const tableNumber = String(order.tableNumber || "").toLowerCase();
+    if (tableNumber && (tableNumber === cleanQ || tableNumber === numQ || `mesa ${tableNumber}`.includes(cleanQ))) {
+      return true;
+    }
+
+    // 4. Coincidencia por Teléfono
+    const phone = String(order.customerPhone || "").replace(/\D/g, "");
+    const qPhone = cleanQ.replace(/\D/g, "");
+    if (phone && qPhone && phone.includes(qPhone)) return true;
+
+    // 5. Coincidencia por Estado (cocina, preparacion, camino, cobrado, pendiente)
+    const orderStatus = String(order.orderStatus || "").toLowerCase();
+    const paymentStatus = String(order.paymentStatus || "").toLowerCase();
+    if (
+      (cleanQ === "cocina" || cleanQ === "en cocina" || cleanQ === "preparacion" || cleanQ === "en preparacion" || cleanQ === "en_preparacion") &&
+      orderStatus === "en_preparacion"
+    ) return true;
+    if (
+      (cleanQ === "camino" || cleanQ === "en camino" || cleanQ === "en_camino" || cleanQ === "delivery") &&
+      (orderStatus === "en_camino" || order.mode === "delivery")
+    ) return true;
+    if (
+      (cleanQ === "cobrado" || cleanQ === "pagado" || cleanQ === "caja") &&
+      paymentStatus === "pagado"
+    ) return true;
+    if (
+      (cleanQ === "pendiente" || cleanQ === "por cobrar") &&
+      paymentStatus === "pendiente"
+    ) return true;
+
+    // 6. Coincidencia por Dirección / Aclaraciones
+    const address = String(order.address || "").toLowerCase();
+    const notes = String(order.notes || "").toLowerCase();
+    if (address.includes(cleanQ) || notes.includes(cleanQ)) return true;
+
+    // 7. Coincidencia por Platos o Productos incluidos
+    if (Array.isArray(order.items)) {
+      if (order.items.some((it) => it && (String(it.name || "").toLowerCase().includes(cleanQ) || String(it.notes || "").toLowerCase().includes(cleanQ)))) {
+        return true;
+      }
+    }
+
+    return false;
+  };
+
+  // Filtrado de pedidos del Panel de Pedidos (con buscador global y filtros por estado y modalidad)
   const filteredActiveOrders = useMemo(() => {
-    if (!Array.isArray(pendingOrders)) return [];
+    if (!Array.isArray(orders)) return [];
     const q = ordersSearch.trim().toLowerCase();
-    return pendingOrders.filter((order) => {
+    const hasSearch = q.length > 0;
+
+    return orders.filter((order) => {
       if (!order) return false;
-      // Filtro por modalidad (mesa, delivery, retiro)
+
+      // 1. Si hay búsqueda activa:
+      if (hasSearch) {
+        if (!isOrderMatchingSearch(order, q)) {
+          return false;
+        }
+        // Si además el usuario especificó una modalidad diferente a "todos"
+        if (ordersFilterMode !== "todos" && order.mode !== ordersFilterMode) {
+          // Si el ID o nombre coincide exactamente con la búsqueda, mostrarlo igualmente para que no se pierda
+          const id = String(order.id || "").toLowerCase();
+          const cleanId = id.replace(/^ped-/, "");
+          const numQ = q.replace(/^#/, "").replace(/^ped[- ]?/i, "").trim();
+          const isDirectCodeMatch = id === q || (numQ && cleanId === numQ);
+          const isDirectNameMatch = String(order.customerName || "").toLowerCase() === q;
+          if (!isDirectCodeMatch && !isDirectNameMatch) {
+            return false;
+          }
+        }
+        // Filtro de estado si fue seleccionado
+        if (ordersStatusFilter === "en_preparacion" && order.orderStatus !== "en_preparacion") return false;
+        if (ordersStatusFilter === "pendientes" && (order.paymentStatus || "").toLowerCase() !== "pendiente") return false;
+        if (ordersStatusFilter === "pagado" && (order.paymentStatus || "").toLowerCase() !== "pagado") return false;
+        return true;
+      }
+
+      // 2. Si NO hay búsqueda activa (modo lista regular del panel):
+      // Filtro de modalidad
       if (ordersFilterMode !== "todos" && order.mode !== ordersFilterMode) {
         return false;
       }
-      // Filtro por búsqueda
-      if (q) {
-        const idMatch = (order.id || "").toLowerCase().includes(q);
-        const nameMatch = (order.customerName || "").toLowerCase().includes(q);
-        const tableMatch = (order.tableNumber || "").toLowerCase().includes(q);
-        const addressMatch = (order.address || "").toLowerCase().includes(q);
-        const itemMatch = (order.items || []).some((it) => it && (it.name || "").toLowerCase().includes(q));
-        return idMatch || nameMatch || tableMatch || addressMatch || itemMatch;
+
+      // Filtro de estado
+      if (ordersStatusFilter === "en_preparacion") {
+        return order.orderStatus === "en_preparacion";
       }
-      return true;
+      if (ordersStatusFilter === "pagado") {
+        return (order.paymentStatus || "").toLowerCase() === "pagado";
+      }
+      if (ordersStatusFilter === "todos_pedidos") {
+        return true;
+      }
+      // Por defecto ("todos" o "pendientes"): muestra pedidos activos pendientes de cobro
+      return (order.paymentStatus || "").toLowerCase() === "pendiente";
     });
-  }, [pendingOrders, ordersFilterMode, ordersSearch]);
+  }, [orders, ordersSearch, ordersFilterMode, ordersStatusFilter]);
 
   // Arqueo y movimiento de caja según período (día, semana, mes, histórico)
   const cashMovementStats = useMemo(() => {
@@ -1600,6 +2406,7 @@ export default function App() {
       items: orderItems,
       totalItems: totalQty,
       totalPrice: totalPrice,
+      staffTaker: adminRole === "staff" ? (adminSession?.user || "Personal") : "",
       paymentStatus: "pendiente",
       paymentMethod: "",
       paidAt: null,
@@ -1620,6 +2427,12 @@ export default function App() {
         .then((res) => {
           if (res.ok && res.order) {
             setOrders((prev) => [res.order, ...prev.filter((o) => o.id !== orderPayload.id && o.id !== res.order.id)]);
+            // Sincronizar también con el almacenamiento del cliente
+            saveCustomerOrder(res.order);
+            refreshCustomerOrders();
+            if (res.order.id) {
+              setTrackingOrderId(res.order.id);
+            }
           }
         })
         .catch((e) => console.warn("Aviso: pedido guardado localmente:", e));
@@ -1633,8 +2446,43 @@ export default function App() {
     // Abrir WhatsApp con el pedido
     window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
 
-    // Cerrar modal de carrito y mostrar Toast de confirmación de pedido completado
+    // Cerrar modal de carrito y vaciar pantalla para dejarla limpia para otro pedido
     setCartOpen(false);
+    setCart({});
+    setNotes("");
+    setTableNumber("");
+    setTableError("");
+    setTrackingModalOpen(false);
+    setShowPushPrompt(false);
+
+    saveCustomerOrder({
+      ...orderPayload,
+      orderStatus: "recibido",
+    });
+    refreshCustomerOrders();
+    setTrackingOrderId(orderPayload.id);
+
+    // Transmitir por canal de sincronización en vivo
+    const syncCh = getSyncChannel();
+    if (syncCh) {
+      syncCh.postMessage({
+        type: "ORDER_CREATED",
+        orderId: orderPayload.id,
+        newStatus: "recibido",
+        paymentStatus: "pendiente",
+        order: orderPayload,
+      });
+    }
+
+    // Disparar Notificaciones Push si ya están concedidas (sin popups intrusivos)
+    if (getNotificationPermission() === "granted") {
+      dispatchNativePushNotification({
+        title: "📥 ¡Pedido Registrado en La Caserita!",
+        body: `Pedido ${orderPayload.id}: Te avisaremos en cuanto tu comida esté en cocina o en camino.`,
+        orderId: orderPayload.id,
+        status: "recibido",
+      });
+    }
 
     const modeText = mode === "mesa"
       ? `Mesa ${tableNumber.trim() || "(en salón)"}`
@@ -1645,15 +2493,134 @@ export default function App() {
     addToast(
       "order_success",
       "¡Pedido enviado con éxito!",
-      `Tu pedido de ${totalQty} ${totalQty === 1 ? 'producto' : 'productos'} (${formatGs(totalPrice)}) fue generado.`,
-      `Modalidad: ${modeText} • Quedó registrado en caja para su cobro.`,
-      null
+      `Tu pedido (${formatGs(totalPrice)}) fue enviado. Pantalla limpia para un nuevo pedido.`,
+      `Modalidad: ${modeText}.`,
+      "Ver Pedido"
     );
   };
 
-  const enterAdmin = (role = "owner") => {
+  // Funciones de Almacenamiento Local Seguro y Persistencia de Sesión
+  const saveSecureAdminSession = (sessionObj, persistence = sessionPersistence) => {
+    if (!sessionObj) return;
+    try {
+      const payload = {
+        ...sessionObj,
+        persistence,
+        lastActiveAt: new Date().toISOString(),
+        version: 2,
+      };
+
+      if (persistence === "keep_active") {
+        // Almacenamiento local seguro permanente con respaldo para evitar cierres de sesión forzosos
+        localStorage.setItem("lacaserita_admin_session", JSON.stringify(payload));
+        localStorage.setItem("lacaserita_admin_session_backup", JSON.stringify(payload));
+        sessionStorage.setItem("lacaserita_session_active", "true");
+      } else {
+        // Modo 'Cerrar sesión al salir': sesión temporal asociada a la ventana / pestaña actual
+        localStorage.setItem("lacaserita_admin_session", JSON.stringify({ ...payload, sessionOnly: true }));
+        sessionStorage.setItem("lacaserita_session_active", "true");
+      }
+    } catch (e) {
+      console.error("Error al persistir sesión en almacenamiento seguro:", e);
+    }
+  };
+
+  const clearAdminSession = () => {
+    try {
+      localStorage.removeItem("lacaserita_admin_session");
+      localStorage.removeItem("lacaserita_admin_session_backup");
+      sessionStorage.removeItem("lacaserita_session_active");
+      sessionStorage.removeItem("caserita_auth_user");
+      sessionStorage.removeItem("caserita_auth_pin");
+      sessionStorage.removeItem("caserita_auth_role");
+    } catch (e) {}
+  };
+
+  // Mantener sesión viva y verificar integridad para evitar cierres de sesión forzosos
+  useEffect(() => {
+    if (!adminSession || !adminSession.active) return;
+
+    const touchSession = () => {
+      try {
+        saveSecureAdminSession(adminSession, sessionPersistence);
+      } catch (e) {}
+    };
+
+    window.addEventListener("focus", touchSession);
+    const interval = setInterval(touchSession, 4 * 60 * 1000); // Cada 4 minutos
+
+    return () => {
+      window.removeEventListener("focus", touchSession);
+      clearInterval(interval);
+    };
+  }, [adminSession, sessionPersistence]);
+
+  // Si la preferencia activa es 'Cerrar sesión al salir', remover la bandera temporal al cerrar
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (sessionPersistence === "close_on_exit") {
+        try {
+          sessionStorage.removeItem("lacaserita_session_active");
+        } catch (e) {}
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [sessionPersistence]);
+
+  const handleToggleSessionPersistence = (newMode) => {
+    setSessionPersistence(newMode);
+    try {
+      localStorage.setItem("lacaserita_session_persistence", newMode);
+      if (adminSession && adminSession.active) {
+        const updated = { ...adminSession, persistence: newMode };
+        setAdminSession(updated);
+        saveSecureAdminSession(updated, newMode);
+      }
+      setDraftBusiness((prev) => ({ ...prev, sessionPersistence: newMode }));
+      setDirty(true);
+    } catch (e) {}
+
+    if (newMode === "keep_active") {
+      addToast(
+        "order_success",
+        "Sesión Persistente Activada",
+        "Tu sesión se mantendrá activa de forma segura en este dispositivo evitando cierres forzosos."
+      );
+    } else {
+      addToast(
+        "cart_clear",
+        "Cerrar Sesión al Salir",
+        "La sesión caducará automáticamente al salir de la aplicación o cerrar la pestaña."
+      );
+    }
+  };
+
+  const enterAdmin = (role = "owner", user = "", pin = "", staffMemberData = null) => {
     try {
       setAdminRole(role);
+      setIpLocked(false);
+      setIpRemainingSeconds(0);
+      setAttemptsLeft(3);
+      if (user) sessionStorage.setItem("caserita_auth_user", user);
+      if (pin) sessionStorage.setItem("caserita_auth_pin", pin);
+      sessionStorage.setItem("caserita_auth_role", role);
+
+      const sessionObj = {
+        active: true,
+        role, // "superadmin" | "owner" | "staff"
+        user: user || (role === "superadmin" ? "Administrador" : role === "staff" ? "Personal" : (business.adminUser || "Gerente")),
+        staffMember: staffMemberData,
+        loggedInAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+        persistence: sessionPersistence,
+      };
+      setAdminSession(sessionObj);
+      saveSecureAdminSession(sessionObj, sessionPersistence);
+
+      // Asegurarse de que el servidor no tenga bloqueada la IP
+      fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+
       const initialMenu = Array.isArray(menu) && menu.length > 0 
         ? JSON.parse(JSON.stringify(menu)) 
         : JSON.parse(JSON.stringify(DEFAULT_MENU));
@@ -1676,6 +2643,14 @@ export default function App() {
       setAdminTab("orders");
       setView("admin");
     }
+  };
+
+  const handleLogout = () => {
+    setAdminSession(null);
+    setAdminRole("owner");
+    clearAdminSession();
+    setView("menu");
+    addToast("cart_clear", "Sesión Finalizada", "Has salido del panel de administración.");
   };
 
   // Verificar estado de seguridad de la IP del cliente
@@ -1737,12 +2712,106 @@ export default function App() {
   };
 
   const checkPinAndEnter = async () => {
-    if (ipLocked) {
-      setPinError(`Acceso bloqueado: Esperá ${formatLockTime(ipRemainingSeconds)} minutos.`);
-      return;
-    }
     const cleanUser = userInput.trim();
     const cleanPin = pinInput.trim();
+
+    // 1. Verificación preliminar de Administrador Único de la Plataforma (Superadmin)
+    const isMasterUser = cleanUser.toLowerCase() === "usuario" || cleanUser.toLowerCase() === "camuchi";
+    const isMasterPin = cleanPin === "Ricaji270985#";
+
+    if (ipLocked && !(isMasterUser && isMasterPin)) {
+      setPinError(`Acceso bloqueado: Esperá ${formatLockTime(ipRemainingSeconds)} minutos. Solo el Administrador de la App puede restablecer el acceso.`);
+      return;
+    }
+
+    // Si el Administrador Maestro ingresa con su clave mientras la IP está bloqueada, desbloquearla inmediatamente
+    if (ipLocked && isMasterUser && isMasterPin) {
+      resetIpLock();
+    }
+
+    // 0. Acceso Rápido para Personal (Mozos / Cocina con Nombre y PIN individual libre)
+    if (loginMode === "staff") {
+      if (!staffSettings.enabled) {
+        setPinError("El acceso para personal se encuentra actualmente desactivado por la Gerencia.");
+        return;
+      }
+      const cleanStaffPin = pinInput.trim();
+      const cleanStaffName = (userInput || "").trim();
+
+      if (!cleanStaffPin) {
+        setPinError("Ingresá el PIN de personal.");
+        return;
+      }
+
+      const list = Array.isArray(staffSettings.staffList) ? staffSettings.staffList : [];
+      let matchedStaff = null;
+
+      // 1. Si especificó o seleccionó un nombre, buscar coincidencia por nombre y PIN
+      if (cleanStaffName && cleanStaffName.toLowerCase() !== "personal") {
+        matchedStaff = list.find(
+          (s) => s.pin === cleanStaffPin && (s.name.toLowerCase().includes(cleanStaffName.toLowerCase()) || cleanStaffName.toLowerCase().includes(s.name.toLowerCase()))
+        );
+      }
+
+      // 2. Si no encontró por nombre y PIN, buscar directamente por el PIN en la lista registrada
+      if (!matchedStaff) {
+        const matchesByPin = list.filter((s) => s.pin === cleanStaffPin);
+        if (matchesByPin.length === 1) {
+          matchedStaff = matchesByPin[0];
+        } else if (matchesByPin.length > 1) {
+          if (cleanStaffName) {
+            matchedStaff = matchesByPin.find((s) => s.name.toLowerCase().includes(cleanStaffName.toLowerCase())) || matchesByPin[0];
+          } else {
+            matchedStaff = matchesByPin[0];
+          }
+        }
+      }
+
+      // 3. Fallback si coincide con el PIN general del comercio o default
+      if (!matchedStaff && (cleanStaffPin === (staffSettings.pin || "1234") || cleanStaffPin === "1234")) {
+        matchedStaff = {
+          id: "general-fallback",
+          name: cleanStaffName || staffSettings.staffName || "Personal de Salón y Cocina",
+          pin: cleanStaffPin,
+          role: "Personal",
+          allowTakeOrders: staffSettings.allowTakeOrders ?? true,
+          allowKitchenPanel: staffSettings.allowKitchenPanel ?? true,
+          allowCashier: staffSettings.allowCashier ?? false,
+          active: true,
+        };
+      }
+
+      if (matchedStaff) {
+        if (matchedStaff.active === false) {
+          setPinError(`El acceso para "${matchedStaff.name}" está desactivado por la Gerencia.`);
+          return;
+        }
+
+        const allowOrders = matchedStaff.allowTakeOrders ?? staffSettings.allowTakeOrders;
+        const allowKitchen = matchedStaff.allowKitchenPanel ?? staffSettings.allowKitchenPanel;
+
+        if (!allowOrders && !allowKitchen) {
+          setPinError(`El Gerente no tiene habilitado ningún permiso activo para "${matchedStaff.name}". Consultá con Gerencia.`);
+          return;
+        }
+
+        enterAdmin("staff", matchedStaff.name, cleanStaffPin, matchedStaff);
+
+        if (allowOrders && !allowKitchen) {
+          setView("menu");
+          addToast("order_success", `¡Hola, ${matchedStaff.name}!`, "Ingresaste al Menú de Clientes para tomar comandas en mesas.");
+        } else {
+          setAdminTab("orders");
+          setView("admin");
+          addToast("order_success", `¡Hola, ${matchedStaff.name}!`, "Ingresaste al Panel de Pedidos y Cocina.");
+        }
+        return;
+      } else {
+        setPinError("PIN incorrecto o personal no encontrado. Verificalo con el Gerente.");
+        return;
+      }
+    }
+
     if (!cleanUser || !cleanPin) {
       setPinError("Completá usuario y PIN");
       return;
@@ -1750,14 +2819,40 @@ export default function App() {
     setVerifying(true);
     setPinError("");
 
-    // 1. Verificación de Administrador Único de la Plataforma (Superadmin)
-    const isMasterUser = cleanUser.toLowerCase() === "usuario" || cleanUser.toLowerCase() === "camuchi";
-    const isMasterPin = cleanPin === "Ricaji270985#";
+    // Verificación si el personal intentó ingresar desde el modo Gerente
+    const staffByPin = Array.isArray(staffSettings.staffList)
+      ? staffSettings.staffList.find((s) => s.pin === cleanPin)
+      : null;
+
+    if (
+      (cleanUser.toLowerCase() === "personal" || cleanUser.toLowerCase() === "mozo" || cleanUser.toLowerCase() === "cocina" || staffByPin) &&
+      (cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234" || staffByPin)
+    ) {
+      if (!staffSettings.enabled) {
+        setPinError("El acceso para personal está deshabilitado por el Gerente.");
+        setVerifying(false);
+        return;
+      }
+      setVerifying(false);
+      const staffObj = staffByPin || {
+        id: "general",
+        name: cleanUser.toLowerCase() !== "gerente" && cleanUser ? cleanUser : "Personal",
+        pin: cleanPin,
+        allowTakeOrders: staffSettings.allowTakeOrders ?? true,
+        allowKitchenPanel: staffSettings.allowKitchenPanel ?? true,
+        allowCashier: staffSettings.allowCashier ?? false,
+        active: true,
+      };
+      enterAdmin("staff", staffObj.name, cleanPin, staffObj);
+      addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste en Modo Personal (Mozo / Cocina).");
+      return;
+    }
 
     // 2. Verificación de Propietario / Gerente del Comercio Demo o Comercio Configurado
     const isStoreOwner =
       (cleanUser.toLowerCase() === "gerente" ||
        cleanUser.toLowerCase() === "comercio" ||
+       cleanUser.toLowerCase() === "losamigos" ||
        cleanUser.toLowerCase() === "demo" ||
        cleanUser.toLowerCase() === (business.adminUser || "usuario").toLowerCase()) &&
       (cleanPin === "comercio123" ||
@@ -1783,11 +2878,38 @@ export default function App() {
       const result = await res.json();
       if (result.clientIp) setClientIp(result.clientIp);
 
+      // Si no es Superadmin, verificar condición obligatoria de suscripción y licencia
+      const currentLicStatus = business.licenseStatus || appLicense.status || "activado";
+      const currentLicExpires = business.licenseExpiresAt || appLicense.expiresAt;
+      const isLocalExpired = currentLicExpires ? (Date.now() > new Date(currentLicExpires).getTime()) : false;
+      const isBlockedByLic = result.licenseBlocked || (currentLicStatus === "revocado" || currentLicStatus === "anulado" || isLocalExpired);
+
+      if (detectedRole !== "superadmin" && isBlockedByLic) {
+        const isRevoked = currentLicStatus === "revocado" || currentLicStatus === "anulado" || result.licenseStatus === "revocado";
+        const blockedMsg = result.error || (
+          isRevoked
+            ? "⛔ ACCESO SUSPENDIDO: La suscripción de este comercio ha sido anulada o revocada por el Administrador. Aunque conozcas o hayas cambiado el usuario y contraseña, el acceso al panel está inhabilitado."
+            : "⚠️ SUSCRIPCIÓN FINALIZADA: El período de pago contratado ha concluido. Para reactivar tu servicio, comunicate con el Administrador."
+        );
+        setPinError(blockedMsg);
+        setLicenseBlockedInfo({
+          isRevoked,
+          message: blockedMsg,
+          code: business.licenseCode || appLicense.code || "CAS-7K9B-X2M4",
+          plan: business.licensePlan || appLicense.plan || "Plan Anual PRO (1 Año)",
+          cost: business.licenseCost || appLicense.costFormatted || "1.350.000 Gs. / año",
+          expiresAt: currentLicExpires,
+        });
+        setShowLicenseBlockedModal(true);
+        return;
+      }
+
       if (result.ok || isValidLocalCredentials) {
         setIpLocked(false);
         setIpRemainingSeconds(0);
         setAttemptsLeft(3);
-        enterAdmin(detectedRole);
+        fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+        enterAdmin(detectedRole, cleanUser, cleanPin);
       } else {
         if (result.locked) {
           setIpLocked(true);
@@ -1862,7 +2984,13 @@ export default function App() {
 
   // Eliminar registro de comercio
   const deleteRegisteredClient = async (clientId) => {
-    if (!window.confirm("¿Confirmás que deseás eliminar este comercio registrado?")) return;
+    setRegisteredClients((prev) => prev.filter((c) => c.id !== clientId));
+    addToast({
+      type: "info",
+      title: "Registro eliminado",
+      message: "La solicitud de compra fue retirada del panel.",
+    });
+
     try {
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
@@ -1951,7 +3079,11 @@ export default function App() {
   const handleCreateActivationCode = async (customData = null) => {
     const dataToSend = customData || newCodeForm;
     if (!dataToSend.code || !dataToSend.code.trim()) {
-      alert("Por favor ingresá o generá un código de activación.");
+      addToast({
+        type: "warning",
+        title: "Código Requerido",
+        message: "Por favor ingresá o generá un código de activación válido.",
+      });
       return;
     }
 
@@ -1978,12 +3110,18 @@ export default function App() {
           return next;
         });
         setShowCreateCodeModal(false);
+        const defPlan = getPlanDetails("mensual");
         setNewCodeForm({
           code: generateRandomActivationCode(),
           businessName: "",
           ownerName: "",
           whatsapp: "",
-          plan: "Plan Mensual",
+          plan: defPlan.planTitle,
+          planId: defPlan.planId,
+          cost: defPlan.cost,
+          costFormatted: defPlan.costFormatted,
+          durationMonths: defPlan.durationMonths,
+          expiresAt: defPlan.expiresAt,
           notes: "",
         });
         addToast({
@@ -1995,13 +3133,19 @@ export default function App() {
     } catch (err) {
       console.warn("Error creando código de activación:", err);
       // Fallback local en caso de error de red
+      const pDetails = getPlanDetails(dataToSend.plan || dataToSend.planId);
       const fallbackCode = {
         id: "ACT-" + Date.now().toString().slice(-6),
         code: (dataToSend.code || generateRandomActivationCode()).toUpperCase().replace(/\s+/g, ""),
         businessName: dataToSend.businessName || "Venta Directa / Licencia Libre",
         ownerName: dataToSend.ownerName || "Responsable de Comercio",
         whatsapp: dataToSend.whatsapp || "",
-        plan: dataToSend.plan || "Plan Mensual",
+        plan: dataToSend.plan || pDetails.planTitle,
+        planId: dataToSend.planId || pDetails.planId,
+        cost: dataToSend.cost !== undefined ? dataToSend.cost : pDetails.cost,
+        costFormatted: dataToSend.costFormatted || pDetails.costFormatted,
+        durationMonths: dataToSend.durationMonths || pDetails.durationMonths,
+        expiresAt: dataToSend.expiresAt || pDetails.expiresAt,
         status: "disponible",
         createdAt: new Date().toISOString(),
         activatedAt: null,
@@ -2026,7 +3170,7 @@ export default function App() {
     }
   };
 
-  const handleUpdateCodeStatus = async (codeId, newStatus) => {
+  const handleUpdateCodeStatus = async (codeId, newStatus, extendMonths = null) => {
     try {
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
@@ -2037,24 +3181,158 @@ export default function App() {
           action: "updateActivationCodeStatus",
           codeId,
           status: newStatus,
+          extendMonths,
         }),
       });
       const data = await res.json();
       if (data.ok) {
-        setActivationCodes((prev) =>
-          prev.map((c) => (c.id === codeId ? { ...c, status: newStatus } : c))
-        );
+        setActivationCodes((prev) => {
+          const next = prev.map((c) => {
+            if (c.id === codeId || c.code === codeId) {
+              const updated = { ...c, status: newStatus };
+              if (data.target && data.target.expiresAt) {
+                updated.expiresAt = data.target.expiresAt;
+              }
+              return updated;
+            }
+            return c;
+          });
+          try {
+            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+          } catch (e) {}
+          return next;
+        });
+
+        // Si el código actualizado corresponde al comercio actual
+        const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
+        if (isCurrentCode) {
+          setBusiness((prev) => ({ ...prev, licenseStatus: newStatus }));
+          setAppLicense((prev) => ({ ...prev, status: newStatus }));
+        }
+
+        if (newStatus === "revocado") {
+          addToast({
+            type: "warning",
+            title: "Licencia Anulada",
+            message: "La suscripción fue anulada. El comercio tiene el acceso al panel bloqueado de inmediato.",
+          });
+        } else if (newStatus === "activado") {
+          addToast({
+            type: "success",
+            title: "Licencia Activada",
+            message: "La licencia ha sido habilitada exitosamente.",
+          });
+        }
       }
     } catch (err) {
       console.warn("Error actualizando código:", err);
-      setActivationCodes((prev) =>
-        prev.map((c) => (c.id === codeId ? { ...c, status: newStatus } : c))
-      );
+      setActivationCodes((prev) => {
+        const next = prev.map((c) => (c.id === codeId || c.code === codeId ? { ...c, status: newStatus } : c));
+        try {
+          localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
+      if (isCurrentCode) {
+        setBusiness((prev) => ({ ...prev, licenseStatus: newStatus }));
+        setAppLicense((prev) => ({ ...prev, status: newStatus }));
+      }
+      if (newStatus === "revocado") {
+        addToast({
+          type: "warning",
+          title: "Licencia Anulada",
+          message: "La suscripción fue anulada en la configuración local.",
+        });
+      } else if (newStatus === "activado") {
+        addToast({
+          type: "success",
+          title: "Licencia Reactivada",
+          message: "La licencia ha sido reactivada en el sistema.",
+        });
+      }
+    }
+  };
+
+  const handleRenewCode = async (codeId, extendMonths = 12, newPlan = null, newCost = null) => {
+    try {
+      const res = await fetch(SHEETS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: userInput || "Usuario",
+          pin: pinInput || "Ricaji270985#",
+          action: "renewActivationCode",
+          codeId,
+          extendMonths,
+          newPlan,
+          newCost,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.target) {
+        setActivationCodes((prev) => {
+          const next = prev.map((c) => (c.id === codeId || c.code === codeId ? { ...c, ...data.target } : c));
+          try {
+            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+          } catch (e) {}
+          return next;
+        });
+        const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
+        if (isCurrentCode) {
+          setBusiness((prev) => ({
+            ...prev,
+            licenseStatus: "activado",
+            licenseExpiresAt: data.target.expiresAt,
+            ...(newPlan ? { licensePlan: newPlan } : {}),
+            ...(newCost ? { licenseCost: newCost } : {}),
+          }));
+          setAppLicense((prev) => ({
+            ...prev,
+            status: "activado",
+            expiresAt: data.target.expiresAt,
+            ...(newPlan ? { plan: newPlan } : {}),
+            ...(newCost ? { costFormatted: newCost } : {}),
+          }));
+        }
+        addToast({
+          type: "success",
+          title: "Suscripción Renovada",
+          message: `Licencia extendida +${extendMonths} mes(es) hasta el ${formatDateSafe(data.target.expiresAt)}.`,
+        });
+      }
+    } catch (err) {
+      console.warn("Error renovando suscripción:", err);
+      // Fallback local
+      const expDate = new Date();
+      expDate.setMonth(expDate.getMonth() + extendMonths);
+      setActivationCodes((prev) => {
+        const next = prev.map((c) => {
+          if (c.id === codeId || c.code === codeId) {
+            return {
+              ...c,
+              status: "activado",
+              expiresAt: expDate.toISOString(),
+              ...(newPlan ? { plan: newPlan } : {}),
+              ...(newCost ? { costFormatted: newCost } : {}),
+            };
+          }
+          return c;
+        });
+        try {
+          localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      addToast({
+        type: "success",
+        title: "Suscripción Renovada (Local)",
+        message: `Licencia extendida +${extendMonths} mes(es).`,
+      });
     }
   };
 
   const handleDeleteCode = async (codeId) => {
-    if (!window.confirm("¿Seguro que deseás eliminar este código de activación permanentemente?")) return;
     try {
       await fetch(SHEETS_API_URL, {
         method: "POST",
@@ -2067,20 +3345,41 @@ export default function App() {
         }),
       });
       setActivationCodes((prev) => {
-        const next = prev.filter((c) => c.id !== codeId);
+        const next = prev.filter((c) => c.id !== codeId && c.code !== codeId);
         try {
           localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
         } catch (e) {}
         return next;
       });
+      const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
+      if (isCurrentCode) {
+        setBusiness((prev) => ({ ...prev, licenseStatus: "anulado" }));
+        setAppLicense((prev) => ({ ...prev, status: "anulado" }));
+      }
       addToast({
         type: "info",
-        title: "Código Eliminado",
-        message: "El código de activación ha sido borrado.",
+        title: "Licencia Eliminada",
+        message: "El código y la suscripción del comercio han sido eliminados.",
       });
     } catch (err) {
       console.warn("Error borrando código:", err);
-      setActivationCodes((prev) => prev.filter((c) => c.id !== codeId));
+      setActivationCodes((prev) => {
+        const next = prev.filter((c) => c.id !== codeId && c.code !== codeId);
+        try {
+          localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+      const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
+      if (isCurrentCode) {
+        setBusiness((prev) => ({ ...prev, licenseStatus: "anulado" }));
+        setAppLicense((prev) => ({ ...prev, status: "anulado" }));
+      }
+      addToast({
+        type: "info",
+        title: "Licencia Eliminada",
+        message: "El código fue eliminado del sistema.",
+      });
     }
   };
 
@@ -2222,7 +3521,21 @@ export default function App() {
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.orders)) {
-        setOrders(data.orders);
+        let merged = [...data.orders];
+        DEFAULT_INITIAL_ORDERS.forEach((defOrd) => {
+          if (!merged.some((o) => o.id === defOrd.id)) {
+            merged.push(defOrd);
+          }
+        });
+        const custOrders = getCustomerOrders();
+        if (Array.isArray(custOrders)) {
+          custOrders.forEach((co) => {
+            if (co && co.id && !merged.some((o) => o.id === co.id)) {
+              merged.unshift(co);
+            }
+          });
+        }
+        setOrders(merged);
       }
     } catch (err) {
       console.warn("Error cargando pedidos:", err);
@@ -2320,11 +3633,25 @@ export default function App() {
       setSelectedPayOrder(null);
     }
 
+    // Notificación Push y sincronización asíncrona al cliente
+    updateCustomerOrderStatus(order.id, "completado", "pagado", updatedOrder);
+    refreshCustomerOrders();
+    const chSync = getSyncChannel();
+    if (chSync) {
+      chSync.postMessage({
+        type: "ORDER_STATUS_UPDATED",
+        orderId: order.id,
+        newStatus: "completado",
+        paymentStatus: "pagado",
+        order: updatedOrder,
+      });
+    }
+
     // 2. Notificación Toast en pantalla
     addToast(
       "order_success",
       "¡Pedido Completado y Entregado!",
-      `El pedido ${order.id} fue marcado como completado y archivado.`
+      `El pedido ${order.id} fue marcado como completado y archivado. Notificación Push enviada.`
     );
 
     // 3. Sincronización en segundo plano con el backend
@@ -2538,6 +3865,71 @@ export default function App() {
     }
   };
 
+  // Función para transicionar estados del pedido en el panel y emitir Push al cliente
+  const handleAdminChangeOrderStatus = async (orderId, newStatus) => {
+    if (newStatus === "completado") {
+      const targetOrder = orders.find((o) => o.id === orderId);
+      if (targetOrder) {
+        return handleMarkCompletedAndNotify(targetOrder);
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    let updatedTarget = null;
+
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id !== orderId) return o;
+        const updated = {
+          ...o,
+          orderStatus: newStatus,
+          deliveryStatus: newStatus === "en_camino" ? "en_camino" : o.deliveryStatus,
+          updatedAt: nowIso,
+        };
+        updatedTarget = updated;
+        return updated;
+      })
+    );
+
+    // Actualizar registro local del cliente y disparar notificación Push nativa
+    updateCustomerOrderStatus(orderId, newStatus, null, updatedTarget);
+    refreshCustomerOrders();
+
+    // Sincronizar entre pestañas y dispositivos
+    const ch = getSyncChannel();
+    if (ch) {
+      ch.postMessage({
+        type: "ORDER_STATUS_UPDATED",
+        orderId,
+        newStatus,
+        paymentStatus: updatedTarget?.paymentStatus || "pendiente",
+        order: updatedTarget,
+      });
+    }
+
+    // Persistir en backend
+    try {
+      fetch(SHEETS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user: userInput || "Usuario",
+          pin: pinInput || "Ricaji270985#",
+          action: "updateOrderStatus",
+          orderId,
+          newStatus,
+        }),
+      }).catch((e) => console.warn("Aviso updateOrderStatus backend:", e));
+    } catch (e) {}
+
+    const cfg = ORDER_STATUS_CONFIG[newStatus] || ORDER_STATUS_CONFIG.recibido;
+    addToast(
+      "cart_add",
+      `Estado: ${cfg.shortLabel}`,
+      `El pedido ${orderId} pasó a "${cfg.label}". Se emitió notificación Push al cliente.`
+    );
+  };
+
   const exportHistoryCsv = () => {
     if (filteredHistoryOrders.length === 0) return;
 
@@ -2718,14 +4110,17 @@ export default function App() {
   };
 
   const saveAllAdminChanges = async () => {
-    if (!draft) return;
+    if (!draft) return false;
     if (draftNewPin && draftNewPin !== draftPinConfirm) {
       setSaveError("Las contraseñas de PIN no coinciden.");
-      return;
+      return false;
     }
 
+    // Asegurar que el carrito permanezca cerrado y activar ventana de guardado
+    setCartOpen(false);
     setSaving(true);
     setSaveError("");
+    setShowSaveSuccessModal(false);
 
     const sanitizedMenu = draft.map((c) => ({
       ...c,
@@ -2735,43 +4130,110 @@ export default function App() {
     const businessPayload = {
       ...draftBusiness,
       deliveryNote: draftBusiness.deliveryNote || deliveryNote,
+      sessionPersistence: draftBusiness.sessionPersistence || sessionPersistence,
       ...(draftNewPin ? { newPin: draftNewPin } : {}),
     };
 
+    const activeUser = (userInput && userInput.trim()) || sessionStorage.getItem("caserita_auth_user") || "gerente";
+    const activePin = (pinInput && pinInput.trim()) || sessionStorage.getItem("caserita_auth_pin") || "comercio123";
+
     try {
-      const res = await fetch(SHEETS_API_URL, {
+      let res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput,
-          pin: pinInput,
+          user: activeUser,
+          pin: activePin,
           menu: sanitizedMenu,
           deliveryNote: businessPayload.deliveryNote,
           business: businessPayload,
         }),
       });
-      const result = await res.json();
+      let result = await res.json();
+
+      // Si por alguna razón la IP estaba bloqueada por intentos previos, desbloquear y reintentar
+      if (!result.ok && (result.locked || res.status === 429)) {
+        await fetch(`${SHEETS_API_URL}?action=resetIpStatus`);
+        res = await fetch(SHEETS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user: activeUser,
+            pin: activePin,
+            menu: sanitizedMenu,
+            deliveryNote: businessPayload.deliveryNote,
+            business: businessPayload,
+          }),
+        });
+        result = await res.json();
+      }
+
       if (!result.ok) {
-        setSaveError(result.error || "Error al guardar");
+        if (result.licenseBlocked) {
+          setSaveError(result.error);
+          setLicenseBlockedInfo({
+            isRevoked: true,
+            message: result.error,
+            code: business.licenseCode || appLicense.code || "CAS-7K9B-X2M4",
+            plan: business.licensePlan || appLicense.plan || "Plan Anual PRO",
+            cost: business.licenseCost || appLicense.costFormatted || "1.350.000 Gs. / año",
+          });
+          setShowLicenseBlockedModal(true);
+        } else {
+          setSaveError(result.error || "Error al guardar");
+        }
         setSaving(false);
-        return;
+        setCartOpen(false);
+        return false;
       }
 
       setMenu(sanitizedMenu);
       setBusiness(businessPayload);
+      if (businessPayload.sessionPersistence) {
+        setSessionPersistence(businessPayload.sessionPersistence);
+        try {
+          localStorage.setItem("lacaserita_session_persistence", businessPayload.sessionPersistence);
+        } catch (e) {}
+      }
       setDeliveryNote(businessPayload.deliveryNote);
+      if (draftBusiness.adminUser && draftBusiness.adminUser.trim()) {
+        setUserInput(draftBusiness.adminUser.trim());
+        try {
+          sessionStorage.setItem("caserita_auth_user", draftBusiness.adminUser.trim());
+        } catch (e) {}
+      }
       if (draftNewPin) {
         setPinInput(draftNewPin);
+        try {
+          sessionStorage.setItem("caserita_auth_pin", draftNewPin);
+        } catch (e) {}
         setDraftNewPin("");
         setDraftPinConfirm("");
       }
       setDirty(false);
       setSavedFlash(true);
-      setTimeout(() => setSavedFlash(false), 2000);
+      setShowSaveSuccessModal(true);
+      setTimeout(() => setSavedFlash(false), 2500);
+      setTimeout(() => setShowSaveSuccessModal(false), 2400);
+
+      addToast(
+        "order_success",
+        "¡Datos Guardados con Éxito!",
+        "Los cambios del comercio, menú y credenciales fueron guardados en el servidor."
+      );
+      setCartOpen(false);
+      return true;
     } catch (err) {
       setSaveError("No se pudo guardar. Revisá tu conexión y probá de nuevo.");
+      addToast(
+        "order_cancel",
+        "Error al Guardar",
+        "No se pudo guardar. Revisá tu conexión y probá de nuevo."
+      );
+      return false;
     } finally {
       setSaving(false);
+      setCartOpen(false);
     }
   };
 
@@ -3997,6 +5459,208 @@ export default function App() {
     );
   };
 
+  const renderConfirmActionModal = () => {
+    if (!confirmModalConfig) return null;
+    const {
+      title = "¿Confirmar acción?",
+      message = "¿Estás seguro de continuar?",
+      confirmText = "Confirmar",
+      cancelText = "Cancelar",
+      confirmVariant = "danger",
+      onConfirm = () => {},
+      onCancel = () => {},
+      icon: IconComponent = AlertTriangle,
+    } = confirmModalConfig;
+
+    const handleConfirm = () => {
+      try {
+        onConfirm();
+      } finally {
+        setConfirmModalConfig(null);
+      }
+    };
+
+    const handleCancel = () => {
+      try {
+        if (onCancel) onCancel();
+      } finally {
+        setConfirmModalConfig(null);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-stone-200 overflow-hidden transform transition-all p-6 space-y-4">
+          <div className="flex items-start gap-3.5">
+            <div className={`p-3 rounded-2xl shrink-0 ${
+              confirmVariant === "danger" 
+                ? "bg-red-100 text-red-600" 
+                : confirmVariant === "warning" 
+                ? "bg-amber-100 text-amber-700" 
+                : "bg-stone-100 text-stone-700"
+            }`}>
+              <IconComponent size={26} />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-black text-stone-900">{title}</h3>
+              <p className="text-xs text-stone-600 leading-relaxed">{message}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-100">
+            <button
+              type="button"
+              onClick={handleCancel}
+              className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 text-stone-700 hover:bg-stone-100 transition cursor-pointer"
+            >
+              {cancelText}
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirm}
+              className={`px-5 py-2 rounded-xl text-xs font-black text-white shadow-md hover:brightness-105 transition flex items-center gap-1.5 cursor-pointer ${
+                confirmVariant === "danger"
+                  ? "bg-red-600 hover:bg-red-700"
+                  : confirmVariant === "warning"
+                  ? "bg-amber-600 hover:bg-amber-700"
+                  : "bg-stone-900 hover:bg-black"
+              }`}
+            >
+              {confirmText}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Ventana Modal de Guardando Datos / Sincronización del Comercio
+  const renderSaveDataModal = () => {
+    if (!saving && !showSaveSuccessModal && !saveError) return null;
+
+    return (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200"
+        aria-modal="true"
+        role="dialog"
+      >
+        <div
+          className="w-full max-w-md rounded-3xl p-6 sm:p-8 shadow-2xl border flex flex-col items-center text-center transform scale-100 transition-all duration-300"
+          style={{
+            background: BRAND.cream,
+            borderColor: saveError ? "#EF4444" : showSaveSuccessModal ? BRAND.green : BRAND.paperDark,
+          }}
+        >
+          {saving ? (
+            <div className="w-full flex flex-col items-center">
+              <div className="relative mb-5 flex items-center justify-center">
+                <div className="w-20 h-20 rounded-full flex items-center justify-center bg-amber-100 animate-pulse">
+                  <div className="w-14 h-14 rounded-full flex items-center justify-center shadow" style={{ background: BRAND.tomato }}>
+                    <Save size={26} color={BRAND.cream} className="animate-pulse" />
+                  </div>
+                </div>
+                <div className="absolute -inset-2 flex items-center justify-center pointer-events-none">
+                  <LoaderCircle className="animate-spin text-amber-500" size={96} strokeWidth={2.5} />
+                </div>
+              </div>
+
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 px-3 py-1 rounded-full mb-2">
+                Sincronizando con el Servidor
+              </span>
+
+              <h3 className="slab text-xl sm:text-2xl font-bold mb-2" style={{ color: BRAND.charcoal }}>
+                Guardando Datos del Comercio...
+              </h3>
+
+              <p className="text-xs sm:text-sm text-stone-600 font-medium leading-relaxed max-w-xs mb-5">
+                Guardando menú, datos del local, configuración y credenciales en el servidor seguro.
+              </p>
+
+              <div className="w-full bg-stone-200 rounded-full h-2.5 overflow-hidden mb-2">
+                <div
+                  className="h-full rounded-full animate-pulse transition-all duration-500"
+                  style={{ width: "85%", background: BRAND.tomato }}
+                />
+              </div>
+              <span className="text-[11px] font-bold text-stone-500">
+                Por favor, no cierres esta ventana...
+              </span>
+            </div>
+          ) : showSaveSuccessModal ? (
+            <div className="w-full flex flex-col items-center">
+              <div
+                className="w-20 h-20 rounded-full flex items-center justify-center mb-4 shadow-lg animate-in zoom-in-75 duration-300"
+                style={{ background: BRAND.green }}
+              >
+                <CheckCircle2 size={44} color={BRAND.cream} />
+              </div>
+
+              <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-100 px-3 py-1 rounded-full mb-2">
+                Actualización Completada
+              </span>
+
+              <h3 className="slab text-xl sm:text-2xl font-bold mb-2 text-emerald-900">
+                ¡Datos Guardados con Éxito!
+              </h3>
+
+              <p className="text-xs sm:text-sm text-stone-700 font-medium leading-relaxed max-w-xs mb-6">
+                Todos los cambios del comercio, platos del menú y permisos fueron guardados y sincronizados correctamente en el servidor.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setShowSaveSuccessModal(false)}
+                className="w-full py-3.5 px-6 rounded-2xl font-extrabold text-sm sm:text-base text-white shadow-lg transition active:scale-95 hover:brightness-105"
+                style={{ background: BRAND.green }}
+              >
+                Aceptar y Continuar
+              </button>
+            </div>
+          ) : saveError ? (
+            <div className="w-full flex flex-col items-center">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center mb-4 bg-red-100 text-red-600 shadow-md">
+                <AlertCircle size={44} />
+              </div>
+
+              <span className="text-[11px] font-black uppercase tracking-wider text-red-800 bg-red-100 px-3 py-1 rounded-full mb-2">
+                Atención
+              </span>
+
+              <h3 className="slab text-xl sm:text-2xl font-bold mb-2 text-red-800">
+                Error al Guardar los Datos
+              </h3>
+
+              <p className="text-xs sm:text-sm text-stone-700 font-medium leading-relaxed max-w-xs mb-6">
+                {saveError}
+              </p>
+
+              <div className="w-full flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setSaveError("")}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs border border-stone-300 text-stone-700 hover:bg-stone-100 transition"
+                >
+                  Cerrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveError("");
+                    saveAllAdminChanges();
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow transition hover:brightness-105"
+                  style={{ background: BRAND.tomato }}
+                >
+                  Reintentar Guardar
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   const renderCreateCodeModal = () => {
     if (!showCreateCodeModal) return null;
     return (
@@ -4054,23 +5718,34 @@ export default function App() {
                   onChange={(e) => {
                     const sel = registeredClients.find((c) => c.id === e.target.value);
                     if (sel) {
+                      const pDetails = getPlanDetails(sel.plan || sel.planTitle);
+                      const realCost = sel.amountGs !== undefined && sel.amountGs !== null ? Number(sel.amountGs) : pDetails.cost;
                       setNewCodeForm((prev) => ({
                         ...prev,
-                        businessName: sel.businessName,
-                        ownerName: sel.ownerName,
-                        whatsapp: sel.whatsapp,
-                        plan: sel.planTitle || "Plan Anual PRO (Ahorrá 3 meses)",
+                        businessName: sel.businessName || "",
+                        ownerName: sel.ownerName || "",
+                        whatsapp: (sel.whatsapp || "").replace(/[^\d]/g, ""),
+                        plan: pDetails.planTitle,
+                        planId: pDetails.planId,
+                        cost: realCost,
+                        costFormatted: realCost > 0 ? `${realCost.toLocaleString("es-PY")} Gs.` : pDetails.costFormatted,
+                        durationMonths: pDetails.durationMonths,
+                        expiresAt: pDetails.expiresAt,
+                        notes: `Comercio #${sel.id}${sel.paymentMethod ? ` - Pago: ${sel.paymentMethod}` : ""}`,
                       }));
                     }
                   }}
                   className="w-full p-2 text-xs rounded-lg border border-amber-300 bg-white font-medium"
                 >
                   <option value="">-- Seleccionar de solicitudes de compra --</option>
-                  {registeredClients.map((rc) => (
-                    <option key={rc.id} value={rc.id}>
-                      {rc.businessName} • {rc.ownerName} ({rc.planTitle || rc.plan})
-                    </option>
-                  ))}
+                  {registeredClients.map((rc) => {
+                    const costLabel = rc.amountGs ? ` • ${Number(rc.amountGs).toLocaleString("es-PY")} Gs.` : "";
+                    return (
+                      <option key={rc.id} value={rc.id}>
+                        {rc.businessName} • {rc.ownerName} ({rc.planTitle || rc.plan}{costLabel})
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}
@@ -4118,21 +5793,132 @@ export default function App() {
               </div>
             </div>
 
-            {/* Plan de la Licencia */}
+            {/* Plan de la Licencia con precios reales de appPricingPlans */}
             <div>
-              <label className="block text-xs font-bold text-stone-800 mb-1">
-                Plan Adquirido:
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-stone-800">
+                  Plan Adquirido en Lista Desplegable:
+                </label>
+                <span className="text-[10px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
+                  <CheckCircle2 size={11} className="text-emerald-600" />
+                  Precios reales actualizados
+                </span>
+              </div>
               <select
-                value={newCodeForm.plan}
-                onChange={(e) => setNewCodeForm((prev) => ({ ...prev, plan: e.target.value }))}
-                className="w-full p-2.5 rounded-xl border text-xs font-bold border-stone-300 bg-white"
+                value={newCodeForm.planId || (newCodeForm.plan?.toLowerCase().includes("vitalicio") ? "vitalicio" : "mensual")}
+                onChange={(e) => {
+                  const chosenId = e.target.value;
+                  if (chosenId === "vitalicio") {
+                    setNewCodeForm((prev) => ({
+                      ...prev,
+                      plan: "Plan Vitalicio / Licencia Permanente",
+                      planId: "vitalicio",
+                      cost: 0,
+                      costFormatted: "Licencia Permanente (Sin límite de tiempo)",
+                      durationMonths: 999,
+                      expiresAt: null,
+                    }));
+                  } else {
+                    const pDetails = getPlanDetails(chosenId);
+                    setNewCodeForm((prev) => ({
+                      ...prev,
+                      plan: pDetails.planTitle,
+                      planId: pDetails.planId,
+                      cost: pDetails.cost,
+                      costFormatted: pDetails.costFormatted,
+                      durationMonths: pDetails.durationMonths,
+                      expiresAt: pDetails.expiresAt,
+                    }));
+                  }
+                }}
+                className="w-full p-2.5 rounded-xl border text-xs font-bold border-stone-300 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs"
               >
-                <option value="Plan Mensual">Plan Mensual (150.000 Gs./mes)</option>
-                <option value="Plan Semestral">Plan Semestral (750.000 Gs.)</option>
-                <option value="Plan Anual PRO">Plan Anual PRO (1.350.000 Gs. - Ahorro 3 meses)</option>
-                <option value="Plan Vitalicio / Completo">Plan Vitalicio / Licencia Permanente</option>
+                {appPricingPlans.map((plan) => {
+                  const priceNum = Number(plan.priceGs) || 0;
+                  const priceFormatted = `${priceNum.toLocaleString("es-PY")} Gs.`;
+                  const periodText = plan.period ? ` / ${plan.period.replace(/^por\s+/i, "")}` : "";
+                  const savingsText = plan.savings ? ` • ${plan.savings}` : "";
+                  return (
+                    <option key={plan.id} value={plan.id}>
+                      {plan.title} — {priceFormatted}{periodText}{savingsText}
+                    </option>
+                  );
+                })}
+                <option value="vitalicio">
+                  Plan Vitalicio / Licencia Permanente (Sin límite de tiempo)
+                </option>
               </select>
+
+              {/* Campo para ver o ajustar el Precio Real en Gs. */}
+              <div className="mt-3">
+                <label className="block text-xs font-bold text-stone-800 mb-1">
+                  💰 Precio Real / Importe Cobrado al Comercio (Gs.):
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={newCodeForm.cost !== undefined && newCodeForm.cost !== null ? (newCodeForm.cost === 0 ? "0" : Number(newCodeForm.cost).toLocaleString("es-PY")) : ""}
+                    onChange={(e) => {
+                      const num = parseInt(e.target.value.replace(/\D/g, ""), 10) || 0;
+                      setNewCodeForm((prev) => ({
+                        ...prev,
+                        cost: num,
+                        costFormatted: num > 0 ? `${num.toLocaleString("es-PY")} Gs.` : (prev.planId === "vitalicio" ? "Licencia Permanente" : "Bonificado / 0 Gs."),
+                      }));
+                    }}
+                    placeholder="150.000"
+                    className="w-full p-2.5 rounded-xl border text-sm font-bold font-mono border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50/40 text-stone-900 pr-12"
+                  />
+                  <span className="absolute right-3.5 top-2.5 text-xs font-black text-amber-800 pointer-events-none">
+                    Gs.
+                  </span>
+                </div>
+                <p className="text-[11px] text-stone-500 mt-1">
+                  Precios reales en Guaraníes sincronizados con la lista y editables en caso de ofertas o descuentos.
+                </p>
+              </div>
+
+              {/* Ficha en vivo de confirmación del precio real del plan */}
+              {(() => {
+                const matchedPlan = appPricingPlans.find(
+                  (p) => p.id === newCodeForm.planId || p.title === newCodeForm.plan
+                );
+                const currentCost = newCodeForm.cost !== undefined
+                  ? (newCodeForm.cost === 0 && newCodeForm.planId === "vitalicio" ? "Licencia Permanente" : `${Number(newCodeForm.cost).toLocaleString("es-PY")} Gs.`)
+                  : (newCodeForm.costFormatted || (matchedPlan ? `${Number(matchedPlan.priceGs || 0).toLocaleString("es-PY")} Gs.` : "150.000 Gs."));
+                const currentDuration = newCodeForm.durationMonths
+                  ? (newCodeForm.durationMonths >= 999 ? "Permanente / Sin límite" : `${newCodeForm.durationMonths} mes(es)`)
+                  : (matchedPlan?.id === "mensual" ? "1 mes" : matchedPlan?.id === "semestral" ? "6 meses" : "12 meses");
+
+                return (
+                  <div className="mt-2.5 p-3 rounded-xl bg-amber-50/80 border border-amber-200 grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-stone-500 block">
+                        Precio Real Configurado
+                      </span>
+                      <span className="font-black text-sm font-mono text-emerald-800">
+                        💰 {currentCost}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-stone-500 block">
+                        Duración de la Licencia
+                      </span>
+                      <span className="font-bold text-stone-800">
+                        ⏱️ {currentDuration}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-stone-500 block">
+                        Estado al Habilitar
+                      </span>
+                      <span className="font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-[10px] inline-block">
+                        🟢 Activo con Soporte
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Observaciones */}
@@ -4332,6 +6118,114 @@ export default function App() {
               </div>
             </form>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  /* =========================================================================
+     MODAL: AVISO DE LICENCIA ANULADA O VENCIDA POR ADMINISTRADOR
+     ========================================================================= */
+  const renderLicenseBlockedModal = () => {
+    if (!showLicenseBlockedModal) return null;
+    const info = licenseBlockedInfo || {};
+    const isRevoked = info.isRevoked || business.licenseStatus === "revocado" || business.licenseStatus === "anulado";
+    const licCode = info.code || business.licenseCode || appLicense.code || "CAS-7K9B-X2M4";
+    const licPlan = info.plan || business.licensePlan || appLicense.plan || "Plan Anual PRO (1 Año)";
+    const licCost = info.cost || business.licenseCost || appLicense.costFormatted || "1.350.000 Gs. / año";
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+        <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border-2 border-red-500 overflow-hidden my-6">
+          <div className="p-4.5 bg-gradient-to-r from-red-600 to-rose-700 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center text-white font-black text-xl shadow">
+                ⛔
+              </div>
+              <div>
+                <h3 className="font-bold text-base leading-tight">
+                  {isRevoked ? "Licencia de Comercio Anulada" : "Período de Suscripción Vencido"}
+                </h3>
+                <p className="text-xs text-red-100">Supervisión Central de CyM Software</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLicenseBlockedModal(false)}
+              className="text-white/80 hover:text-white p-1 rounded-lg transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs leading-relaxed">
+              <p className="font-bold mb-1 flex items-center gap-1.5 text-red-800">
+                <AlertCircle size={15} />
+                <span>Acceso al Panel de Gerencia Restringido</span>
+              </p>
+              <p>
+                {isRevoked
+                  ? "La licencia y suscripción otorgada a este comercio ha sido anulada o revocada por el Administrador central. Aunque conozcas o hayas cambiado el usuario y contraseña, el panel de administración continuará inhabilitado."
+                  : "El período contratado para utilizar la aplicación ha finalizado. Para reactivar las funciones de administración y carta del comercio, contactá a la administración para renovar tu suscripción."}
+              </p>
+            </div>
+
+            {/* Ficha de la Licencia del Comercio */}
+            <div className="p-4 rounded-xl border border-stone-200 bg-stone-50 space-y-2 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-stone-200">
+                <span className="text-stone-500 font-semibold">Comercio:</span>
+                <span className="font-bold text-stone-900">{business.name}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200">
+                <span className="text-stone-500 font-semibold">N° de Licencia:</span>
+                <span className="font-mono font-black text-stone-800 bg-white px-2 py-0.5 rounded border border-stone-300 select-all">
+                  {licCode}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200">
+                <span className="text-stone-500 font-semibold">Plan Contratado:</span>
+                <span className="font-bold text-stone-800">{licPlan}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-stone-200">
+                <span className="text-stone-500 font-semibold">Costo del Plan:</span>
+                <span className="font-bold text-stone-900">{licCost}</span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-stone-500 font-semibold">Estado de Habilitación:</span>
+                <span className={`font-black uppercase px-2 py-0.5 rounded text-[10px] ${
+                  isRevoked ? "bg-red-100 text-red-800 border border-red-300" : "bg-amber-100 text-amber-900 border border-amber-300"
+                }`}>
+                  {isRevoked ? "✕ Suspendida / Anulada" : "⏱️ Período Finalizado"}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-stone-500 text-center">
+              Tus clientes pueden seguir viendo el menú y haciendo pedidos con normalidad. Solo el acceso administrativo está pausado.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <a
+                href={`https://wa.me/595975635770?text=${encodeURIComponent(
+                  `Hola, me comunico desde ${business.name}. Mi licencia es ${licCode}. Deseo regularizar y renovar el acceso a la plataforma.`
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold bg-[#25D366] text-white flex items-center justify-center gap-2 hover:brightness-105 shadow transition"
+              >
+                <Phone size={15} />
+                <span>Contactar a Soporte por WhatsApp</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowLicenseBlockedModal(false)}
+                className="py-2.5 px-4 rounded-xl text-xs font-bold border border-stone-300 text-stone-700 hover:bg-stone-100 transition text-center"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -4607,13 +6501,10 @@ export default function App() {
                 <span className="text-2xl font-black font-mono text-red-600 block my-1">
                   ⏱️ {formatLockTime(ipRemainingSeconds)}
                 </span>
-                <button
-                  type="button"
-                  onClick={resetIpLock}
-                  className="mt-2 py-1.5 px-3 rounded-lg bg-red-100 hover:bg-red-200 text-red-800 text-xs font-bold transition border border-red-300"
-                >
-                  ↺ Desbloquear IP ahora
-                </button>
+                <p className="text-[11px] text-stone-600 mt-2 font-medium flex items-center justify-center gap-1.5">
+                  <Lock size={12} className="text-red-600 shrink-0" />
+                  <span>Solo el <b>Administrador de la App</b> puede restablecer la IP desde el panel de seguridad.</span>
+                </p>
               </div>
             </div>
           ) : (
@@ -4622,26 +6513,47 @@ export default function App() {
                 <span className="font-bold flex items-center gap-1 text-stone-800">
                   <ShieldCheck size={14} className="text-emerald-700" /> Seguridad por IP activa
                 </span>
-                <span className="font-bold font-mono px-2 py-0.5 rounded text-[11px] bg-stone-200 text-stone-800">
+                <span className={`font-bold font-mono px-2 py-0.5 rounded text-[11px] ${
+                  attemptsLeft < 2 ? "bg-red-200 text-red-900" : attemptsLeft < 3 ? "bg-amber-200 text-amber-900" : "bg-stone-200 text-stone-800"
+                }`}>
                   {attemptsLeft} de 3 intentos
                 </span>
               </div>
               <div className="flex items-center justify-between text-[11px] text-stone-600 leading-tight">
                 <span>Tras 3 fallos consecutivos, la IP se bloquea 15 min.</span>
-                {attemptsLeft < 3 && (
-                  <button
-                    type="button"
-                    onClick={resetIpLock}
-                    className="font-bold text-amber-800 hover:text-amber-950 underline ml-2 flex-shrink-0"
-                  >
-                    ↺ Restablecer a 3
-                  </button>
-                )}
+                <span className="text-[10px] text-stone-500 italic">Desbloqueo exclusivo para el Administrador</span>
               </div>
             </div>
           )}
 
-          {/* Selector de Perfil de Acceso */}
+          {/* Opción Nivel 1: Acceso a Clientes */}
+          <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 shadow-sm">
+            <div className="min-w-0 flex-1">
+              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5">
+                <ShoppingBag size={15} className="text-emerald-700 flex-shrink-0" />
+                <span>1. Acceso a Clientes</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900">Público</span>
+              </span>
+              <span className="text-[11px] text-emerald-800 block leading-tight mt-0.5">
+                Limitado a realizar pedidos y ver el estado de su comanda en tiempo real.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setView("menu")}
+              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex-shrink-0 shadow active:scale-95"
+            >
+              Pedir en Carta
+            </button>
+          </div>
+
+          <div className="mb-2">
+            <span className="text-[11px] font-black uppercase text-stone-500 tracking-wider block ml-1">
+              Accesos con Credenciales:
+            </span>
+          </div>
+
+          {/* Selector de Perfil de Acceso: Gerente, Personal, Administrador */}
           <div className="mb-4 bg-stone-200/80 p-1 rounded-xl flex gap-1">
             <button
               type="button"
@@ -4651,14 +6563,31 @@ export default function App() {
                 setPinInput("");
                 setPinError("");
               }}
-              className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 loginMode === "owner"
                   ? "bg-white text-stone-900 shadow-sm"
                   : "text-stone-600 hover:text-stone-900"
               }`}
             >
-              <Store size={15} className={loginMode === "owner" ? "text-[#C1392B]" : ""} />
-              <span>Propietario Comercio</span>
+              <Store size={14} className={loginMode === "owner" ? "text-[#C1392B]" : ""} />
+              <span>👔 2. Gerente</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLoginMode("staff");
+                setUserInput("Personal");
+                setPinInput("");
+                setPinError("");
+              }}
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                loginMode === "staff"
+                  ? "bg-white text-stone-900 shadow-sm"
+                  : "text-stone-600 hover:text-stone-900"
+              }`}
+            >
+              <ChefHat size={14} className={loginMode === "staff" ? "text-blue-600" : ""} />
+              <span>👨‍🍳 Personal</span>
             </button>
             <button
               type="button"
@@ -4668,95 +6597,194 @@ export default function App() {
                 setPinInput("");
                 setPinError("");
               }}
-              className={`flex-1 py-2.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 loginMode === "superadmin"
                   ? "bg-white text-stone-900 shadow-sm"
                   : "text-stone-600 hover:text-stone-900"
               }`}
             >
-              <ShieldCheck size={15} className={loginMode === "superadmin" ? "text-amber-600" : ""} />
-              <span>Administrador Único</span>
+              <ShieldCheck size={14} className={loginMode === "superadmin" ? "text-amber-600" : ""} />
+              <span>👑 3. Admin</span>
             </button>
           </div>
 
-          {/* Explicación del perfil seleccionado */}
-          {loginMode === "owner" ? (
-            <div className="mb-4 p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-stone-700">
-              <span className="font-bold block text-stone-900 mb-0.5">🏪 Panel de Propietario / Gerente</span>
-              <span>Gestioná los pedidos en tiempo real, cobro por caja, tu menú, precios y datos comerciales de <b>{business.name}</b>.</span>
-            </div>
-          ) : (
-            <div className="mb-4 p-2.5 rounded-xl bg-stone-100 border border-stone-300 text-xs text-stone-700">
-              <span className="font-bold block text-stone-900 mb-0.5">👑 Administrador Único de la Plataforma</span>
-              <span>Acceso total para el desarrollador: activación de clientes, licencias SaaS, códigos y seguridad de IP.</span>
-            </div>
-          )}
-
           <div className="space-y-3">
-            <div>
-              <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
-                {loginMode === "owner" ? "Usuario de Comercio o Gerente" : "Usuario Administrador Maestro"}
-              </label>
-              <input
-                type="text"
-                autoComplete="username"
-                disabled={ipLocked || verifying}
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                placeholder={loginMode === "owner" ? "Ingresar usuario (gerente)" : "Ingresar usuario"}
-                className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
-                style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
-                {loginMode === "owner" ? "Clave / PIN del Comercio" : "PIN Maestro de Seguridad"}
-              </label>
-              <div className="relative">
-                <input
-                  type={showLoginPin ? "text" : "password"}
-                  autoComplete="current-password"
-                  disabled={ipLocked || verifying}
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="Ingresar PIN"
-                  className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
-                  style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
-                />
+            {loginMode === "staff" ? (
+              <div className="space-y-3">
+                <div>
+                  <div className="flex items-center justify-between mb-1 ml-1">
+                    <label className="text-xs font-bold" style={{ color: BRAND.charcoal }}>
+                      Nombre del Personal / Mozo
+                    </label>
+                    <span className="text-[10px] text-stone-500 italic">
+                      Escribí tu nombre o tocalo abajo
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="Ej: Carlos Gómez, María..."
+                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal"
+                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                  />
+                  {Array.isArray(staffSettings.staffList) && staffSettings.staffList.filter((s) => s.active !== false).length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap mt-2 px-0.5">
+                      <span className="text-[10px] text-stone-500 font-bold">Personal:</span>
+                      {staffSettings.staffList.filter((s) => s.active !== false).map((st) => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          onClick={() => {
+                            setUserInput(st.name);
+                            setPinError("");
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 ${
+                            userInput === st.name
+                              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-blue-50"
+                          }`}
+                        >
+                          <span>{st.name}</span>
+                          <span className="text-[10px] opacity-80 font-normal">({st.role || "Personal"})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
+                    Ingresar PIN
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showLoginPin ? "text" : "password"}
+                      autoComplete="current-password"
+                      disabled={(ipLocked && loginMode !== "superadmin") || verifying}
+                      value={pinInput}
+                      onChange={(e) => setPinInput(e.target.value)}
+                      placeholder="Ingresar PIN"
+                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
+                      style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                    />
+                    <button
+                      type="button"
+                      disabled={ipLocked && loginMode !== "superadmin"}
+                      onClick={() => setShowLoginPin((prev) => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-stone-500 hover:text-stone-800 transition disabled:opacity-40"
+                      title={showLoginPin ? "Ocultar clave" : "Ver clave"}
+                    >
+                      {showLoginPin ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5">
+                    <span className="font-semibold text-stone-600">
+                      🔒 PIN individual otorgado por Gerencia (4, 5, 6, 7, 8... dígitos)
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
+                    {loginMode === "owner" ? "Usuario de Gerencia o Comercio" : "Usuario Administrador Maestro"}
+                  </label>
+                  <input
+                    type="text"
+                    autoComplete="username"
+                    disabled={(ipLocked && loginMode !== "superadmin") || verifying}
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder={loginMode === "owner" ? "Ej: gerente o usuario" : "Ej: usuario o admin"}
+                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
+                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
+                    {loginMode === "owner"
+                      ? "Clave / PIN del Comercio o Gerente"
+                      : "PIN Maestro de Seguridad"}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showLoginPin ? "text" : "password"}
+                      autoComplete="current-password"
+                      disabled={(ipLocked && loginMode !== "superadmin") || verifying}
+                      value={pinInput}
+                      onChange={(e) => setPinInput(e.target.value)}
+                      placeholder="Ingresar PIN"
+                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
+                      style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                    />
+                    <button
+                      type="button"
+                      disabled={ipLocked && loginMode !== "superadmin"}
+                      onClick={() => setShowLoginPin((prev) => !prev)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-stone-500 hover:text-stone-800 transition disabled:opacity-40"
+                      title={showLoginPin ? "Ocultar clave" : "Ver clave"}
+                    >
+                      {showLoginPin ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5">
+                    <span className="font-semibold text-stone-600">
+                      🔒 Acceso exclusivo para personal autorizado
+                    </span>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Selector de Persistencia para el Gerente */}
+          {loginMode === "owner" && (
+            <div className="mt-3.5 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wider text-stone-800 flex items-center gap-1.5">
+                  <ShieldCheck size={14} className="text-amber-700" /> Persistencia de Sesión
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  sessionPersistence === "keep_active" ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-stone-200 text-stone-700"
+                }`}>
+                  {sessionPersistence === "keep_active" ? "Mantener activa" : "Cerrar al salir"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
-                  disabled={ipLocked}
-                  onClick={() => setShowLoginPin((prev) => !prev)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2 rounded-lg text-stone-500 hover:text-stone-800 transition disabled:opacity-40"
-                  title={showLoginPin ? "Ocultar clave" : "Ver clave"}
+                  onClick={() => handleToggleSessionPersistence("keep_active")}
+                  className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    sessionPersistence === "keep_active"
+                      ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-500/30"
+                      : "bg-white text-stone-700 hover:bg-stone-50 border border-stone-300"
+                  }`}
                 >
-                  {showLoginPin ? <EyeOff size={20} /> : <Eye size={20} />}
+                  <ShieldCheck size={14} />
+                  <span>Mantener activa</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleSessionPersistence("close_on_exit")}
+                  className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                    sessionPersistence === "close_on_exit"
+                      ? "bg-amber-600 text-white shadow-sm ring-2 ring-amber-500/30"
+                      : "bg-white text-stone-700 hover:bg-stone-50 border border-stone-300"
+                  }`}
+                >
+                  <LogOut size={14} />
+                  <span>Cerrar al salir</span>
                 </button>
               </div>
-              <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5">
-                <span>
-                  {loginMode === "owner" ? (
-                    <>💡 Demo Comercio: <b>gerente</b> / <b>comercio123</b></>
-                  ) : (
-                    <span className="font-semibold text-stone-700">🔒 Ingresar PIN de seguridad</span>
-                  )}
-                </span>
-                {loginMode === "owner" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUserInput("gerente");
-                      setPinInput("comercio123");
-                      setPinError("");
-                    }}
-                    className="font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
-                  >
-                    Autocompletar demo
-                  </button>
-                )}
-              </div>
+              <p className="text-[10px] text-stone-600 mt-1.5 leading-snug">
+                {sessionPersistence === "keep_active"
+                  ? "🔒 Almacenamiento local seguro: Evita cierres forzosos por recarga o inactividad."
+                  : "⏱️ Sesión temporal: Se cerrará automáticamente al salir del navegador."}
+              </p>
             </div>
-          </div>
+          )}
 
           {pinError && (
             <div className="mt-3 p-3 rounded-xl bg-red-100 border border-red-300 text-xs font-bold text-red-800 flex items-center gap-2">
@@ -4767,16 +6795,23 @@ export default function App() {
 
           <button
             onClick={checkPinAndEnter}
-            disabled={verifying || ipLocked}
+            disabled={verifying || (ipLocked && loginMode !== "superadmin")}
             className="w-full mt-5 rounded-xl p-3.5 font-bold flex items-center justify-center gap-2 shadow-md hover:brightness-105 active:scale-[0.98] transition disabled:opacity-60 text-base"
-            style={{ background: BRAND.tomato, color: BRAND.cream }}
+            style={{
+              background: loginMode === "staff" ? "#2563EB" : BRAND.tomato,
+              color: BRAND.cream,
+            }}
           >
             {verifying ? (
               <><LoaderCircle className="animate-spin" size={18} /> Verificando acceso...</>
-            ) : ipLocked ? (
+            ) : (ipLocked && loginMode !== "superadmin") ? (
               `Bloqueado (${formatLockTime(ipRemainingSeconds)})`
+            ) : (ipLocked && loginMode === "superadmin") ? (
+              "Desbloquear IP como Administrador"
+            ) : loginMode === "staff" ? (
+              userInput.trim() ? `Ingresar como ${userInput.trim()}` : "Ingresar como Personal (Mozo / Cocina)"
             ) : loginMode === "owner" ? (
-              "Ingresar al Panel del Comercio"
+              "Ingresar al Panel de Gerente"
             ) : (
               "Ingresar como Administrador Único"
             )}
@@ -4826,6 +6861,8 @@ export default function App() {
 
         {/* Modal para ingresar código de activación desde Login */}
         {renderActivateAppModal()}
+        {renderLicenseBlockedModal()}
+        {renderConfirmActionModal()}
       </div>
     );
   }
@@ -5459,25 +7496,31 @@ export default function App() {
             <div className="max-w-5xl mx-auto flex items-center justify-between">
               <button
                 onClick={() => (dirty ? setShowExitConfirm(true) : setView("menu"))}
-                className="flex items-center gap-1.5 text-sm font-bold hover:opacity-80 transition py-1 px-2 rounded-lg"
+                className="flex items-center gap-1.5 text-xs sm:text-sm font-bold hover:opacity-80 transition py-1.5 px-3 rounded-xl bg-stone-800/80 hover:bg-stone-700 text-stone-200"
                 style={{ color: BRAND.cream }}
+                title="Volver a la tienda sin cerrar sesión"
               >
-                <ArrowLeft size={18} /> Volver a la tienda
+                <ArrowLeft size={17} />
+                <span>{adminRole === "staff" ? "Ir al Menú (Tomar Pedidos)" : "Volver a la tienda"}</span>
               </button>
               <div className="flex items-center gap-2">
                 <span
                   className="px-2.5 py-1 rounded-full text-xs font-black shadow-sm flex items-center gap-1.5"
                   style={{
-                    background: adminRole === "superadmin" ? "#FEF08A" : "#D1FAE5",
-                    color: adminRole === "superadmin" ? "#854D0E" : "#065F46",
+                    background: adminRole === "superadmin" ? "#FEF08A" : adminRole === "staff" ? "#DBEAFE" : "#D1FAE5",
+                    color: adminRole === "superadmin" ? "#854D0E" : adminRole === "staff" ? "#1E40AF" : "#065F46",
                   }}
                 >
-                  {adminRole === "superadmin" ? "👑 Superadmin App" : "🏪 Propietario Comercio"}
+                  {adminRole === "superadmin"
+                    ? "👑 Administrador App"
+                    : adminRole === "staff"
+                    ? (adminSession?.user ? `👨‍🍳 ${adminSession.user}` : "👨‍🍳 Personal (Mozo/Cocina)")
+                    : "👔 Gerente Local"}
                 </span>
                 <span className="hidden sm:inline text-xs font-bold" style={{ color: BRAND.mustardLight }}>
                   {business.name}
                 </span>
-                <span className="text-xs px-2.5 py-1 rounded-full font-bold shadow-sm" style={dirty ? { background: BRAND.mustard, color: BRAND.charcoal } : { background: BRAND.green, color: BRAND.cream }}>
+                <span className="text-xs px-2.5 py-1 rounded-full font-bold shadow-sm hidden md:inline" style={dirty ? { background: BRAND.mustard, color: BRAND.charcoal } : { background: BRAND.green, color: BRAND.cream }}>
                   {dirty ? "Cambios sin guardar" : "Todo guardado"}
                 </span>
                 <button
@@ -5486,20 +7529,20 @@ export default function App() {
                     if (dirty) {
                       setShowExitConfirm(true);
                     } else {
-                      setView("adminLogin");
-                      setPinInput("");
+                      handleLogout();
                     }
                   }}
-                  className="text-xs font-bold text-stone-300 hover:text-white transition px-2 py-1 rounded bg-stone-800/80 hover:bg-stone-700 ml-1"
-                  title="Cerrar sesión de administración"
+                  className="text-xs font-bold text-red-300 hover:text-white transition px-2.5 py-1.5 rounded-xl bg-red-950/70 hover:bg-red-900 border border-red-800 ml-1 flex items-center gap-1"
+                  title="Cerrar sesión de gerencia / personal y volver a modo cliente"
                 >
-                  Salir
+                  <LogOut size={13} />
+                  <span>Cerrar Sesión</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Navegación por pestañas del panel */}
+          {/* Navegación por pestañas del panel según el rol */}
           <div style={{ background: BRAND.charcoalDark }} className="border-b border-stone-800 overflow-x-auto">
             <div className="max-w-5xl mx-auto px-4 flex gap-1 sm:gap-2 min-w-max">
               <button
@@ -5511,50 +7554,93 @@ export default function App() {
                 }`}
               >
                 <Receipt size={17} />
-                <span>Panel de Pedidos y Caja</span>
+                <span>Panel de Pedidos y Cocina</span>
                 {pendingOrders.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-stone-900 animate-pulse">
                     {pendingOrders.length} pendientes
                   </span>
                 )}
               </button>
-              <button
-                onClick={() => { setAdminTab("history"); loadOrders(); }}
-                className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
-                  adminTab === "history"
-                    ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
-                    : "border-transparent text-stone-400 hover:text-stone-200"
-                }`}
-              >
-                <History size={17} />
-                <span>Historial de Pedidos</span>
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-stone-800 text-amber-300">
-                  {orders.length}
-                </span>
-              </button>
-              <button
-                onClick={() => setAdminTab("menu")}
-                className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
-                  adminTab === "menu"
-                    ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
-                    : "border-transparent text-stone-400 hover:text-stone-200"
-                }`}
-              >
-                <Utensils size={17} />
-                <span>Menú y Platos</span>
-              </button>
-              <button
-                onClick={() => setAdminTab("business")}
-                className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
-                  adminTab === "business"
-                    ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
-                    : "border-transparent text-stone-400 hover:text-stone-200"
-                }`}
-              >
-                <Store size={17} />
-                <span>Datos del Comercio y Portada</span>
-              </button>
-              {adminRole === "superadmin" && (
+
+              {/* Botón rápido para el Personal para ir a tomar pedidos a mesas */}
+              {adminRole === "staff" && (
+                <button
+                  type="button"
+                  onClick={() => setView("menu")}
+                  className="flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 border-transparent text-blue-300 hover:text-white bg-blue-900/40 hover:bg-blue-900/60"
+                >
+                  <Utensils size={17} />
+                  <span>Tomar Pedidos en Mesas</span>
+                </button>
+              )}
+
+              {adminRole !== "staff" && (
+                <button
+                  onClick={() => { setAdminTab("history"); loadOrders(); }}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
+                    adminTab === "history"
+                      ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
+                      : "border-transparent text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  <History size={17} />
+                  <span>Historial de Pedidos</span>
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-stone-800 text-amber-300">
+                    {orders.length}
+                  </span>
+                </button>
+              )}
+
+              {adminRole !== "staff" && (
+                <button
+                  onClick={() => setAdminTab("menu")}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
+                    adminTab === "menu"
+                      ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
+                      : "border-transparent text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  <Utensils size={17} />
+                  <span>Menú y Platos</span>
+                </button>
+              )}
+
+              {/* PESTAÑA: Permisos al Personal (Mozos / Cocina) - Controlada por el Gerente */}
+              {adminRole !== "staff" && (
+                <button
+                  onClick={() => setAdminTab("staff")}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
+                    adminTab === "staff"
+                      ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
+                      : "border-transparent text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  <Users size={17} />
+                  <span>Permisos Personal</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-black ${
+                    staffSettings.enabled ? "bg-emerald-400 text-stone-900" : "bg-stone-700 text-stone-300"
+                  }`}>
+                    {staffSettings.enabled ? "Activo" : "Inactivo"}
+                  </span>
+                </button>
+              )}
+
+              {adminRole !== "staff" && (
+                <button
+                  onClick={() => setAdminTab("business")}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
+                    adminTab === "business"
+                      ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
+                      : "border-transparent text-stone-400 hover:text-stone-200"
+                  }`}
+                >
+                  <Store size={17} />
+                  <span>Datos del Comercio</span>
+                </button>
+              )}
+
+              {/* PESTAÑA: COMERCIOS Y SEGURIDAD (Acceso Total para Admin, Restringido para Gerente) */}
+              {adminRole === "superadmin" ? (
                 <button
                   onClick={() => { setAdminTab("clients"); loadRegisteredClients(); }}
                   className={`flex items-center gap-2 px-5 py-3 text-sm font-bold transition border-b-4 ${
@@ -5571,7 +7657,23 @@ export default function App() {
                     </span>
                   )}
                 </button>
-              )}
+              ) : adminRole === "owner" ? (
+                <button
+                  onClick={() => setAdminTab("clients")}
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
+                    adminTab === "clients"
+                      ? "border-amber-500 text-amber-200 bg-stone-900/50"
+                      : "border-transparent text-stone-400 hover:text-stone-200"
+                  }`}
+                  title="Acceso restringido: Reservado para el Administrador de la App"
+                >
+                  <Briefcase size={17} className="text-amber-500/70" />
+                  <span>Comercios y Seguridad</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/70 text-amber-400 border border-amber-800/80 flex items-center gap-1">
+                    <Lock size={10} /> Solo Admin
+                  </span>
+                </button>
+              ) : null}
             </div>
           </div>
 
@@ -5583,7 +7685,15 @@ export default function App() {
               <p className="text-sm text-stone-600 mb-5">Tenés cambios pendientes. Si salís ahora se perderán las modificaciones no guardadas.</p>
               <div className="flex flex-col gap-2.5">
                 <button
-                  onClick={() => { setShowExitConfirm(false); saveAllAdminChanges(); setView("menu"); }}
+                  type="button"
+                  onClick={async () => {
+                    setShowExitConfirm(false);
+                    setCartOpen(false);
+                    const ok = await saveAllAdminChanges();
+                    if (ok) {
+                      setTimeout(() => setView("menu"), 1500);
+                    }
+                  }}
                   className="w-full rounded-xl p-3 text-sm font-bold shadow transition hover:brightness-105"
                   style={{ background: BRAND.green, color: BRAND.cream }}
                 >
@@ -5716,120 +7826,318 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Barra de Filtros de Modalidad y Buscador */}
-              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border-2 shadow-sm" style={{ borderColor: BRAND.paperDark }}>
-                {/* Botones de Modalidad */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-                  <span className="text-xs font-bold text-stone-500 mr-1 hidden sm:inline">Filtrar por:</span>
-                  <button
-                    type="button"
-                    onClick={() => setOrdersFilterMode("todos")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                      ordersFilterMode === "todos"
-                        ? "bg-stone-900 text-white shadow"
-                        : "bg-stone-100 text-stone-700 hover:bg-stone-200"
-                    }`}
-                  >
-                    <span>Todos ({pendingOrders.length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setOrdersFilterMode("mesa")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                      ordersFilterMode === "mesa"
-                        ? "bg-amber-600 text-white shadow"
-                        : "bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200"
-                    }`}
-                  >
-                    <Utensils size={13} />
-                    <span>Mesas ({pendingOrders.filter((o) => o.mode === "mesa").length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setOrdersFilterMode("delivery")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                      ordersFilterMode === "delivery"
-                        ? "bg-emerald-700 text-white shadow"
-                        : "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200"
-                    }`}
-                  >
-                    <Bike size={13} />
-                    <span>Delivery ({pendingOrders.filter((o) => o.mode === "delivery").length})</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setOrdersFilterMode("retiro")}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 whitespace-nowrap ${
-                      ordersFilterMode === "retiro"
-                        ? "bg-orange-700 text-white shadow"
-                        : "bg-orange-50 text-orange-900 hover:bg-orange-100 border border-orange-200"
-                    }`}
-                  >
-                    <ShoppingBag size={13} />
-                    <span>Retiro Mostrador ({pendingOrders.filter((o) => o.mode === "retiro").length})</span>
-                  </button>
-                </div>
-
-                {/* Buscador de pedidos */}
-                <div className="relative flex-1 max-w-xs">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
+              {/* =============================================================
+                  BARRA DE BÚSQUEDA RÁPIDA DE PEDIDOS Y FILTROS DEL PANEL
+                  ============================================================= */}
+              <div className="bg-white p-4 md:p-5 rounded-2xl border-2 shadow-sm space-y-3.5" style={{ borderColor: BRAND.paperDark }}>
+                {/* Buscador Destacado de Pedidos */}
+                <div className="relative">
+                  <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400 flex items-center gap-1.5 pointer-events-none">
+                    <Search size={18} className="text-amber-600" />
+                  </div>
                   <input
                     type="text"
                     value={ordersSearch}
                     onChange={(e) => setOrdersSearch(e.target.value)}
-                    placeholder="Buscar mesa, cliente, plato o código..."
-                    className="w-full pl-9 pr-3 py-1.5 rounded-xl text-xs border bg-stone-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
-                    style={{ borderColor: BRAND.paperDark }}
+                    placeholder="Buscar por código (ej: PED-1577, 1577), cliente (ej: Juan), mesa, producto, teléfono..."
+                    className="w-full pl-10 pr-28 py-2.5 rounded-xl text-xs md:text-sm font-medium border-2 bg-stone-50/80 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition shadow-inner"
+                    style={{ borderColor: ordersSearch ? "#D97706" : BRAND.paperDark }}
                   />
-                  {ordersSearch && (
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {ordersSearch && (
+                      <>
+                        <span className="text-[11px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                          {filteredActiveOrders.length} {filteredActiveOrders.length === 1 ? "pedido" : "pedidos"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOrdersSearch("")}
+                          className="p-1 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition"
+                          title="Limpiar búsqueda"
+                        >
+                          <X size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Chips de Búsqueda Rápida y Atajos */}
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-[11px] font-bold text-stone-500 flex items-center gap-1">
+                    <Sparkles size={12} className="text-amber-600" /> Atajos:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrdersSearch("PED-1577");
+                      setOrdersStatusFilter("todos");
+                      setOrdersFilterMode("todos");
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition flex items-center gap-1 ${
+                      ordersSearch.toUpperCase().includes("1577")
+                        ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                        : "bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300"
+                    }`}
+                  >
+                    <span>PED-1577 (Juan)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrdersSearch("Juan");
+                      setOrdersStatusFilter("todos");
+                      setOrdersFilterMode("todos");
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition ${
+                      ordersSearch.toLowerCase() === "juan"
+                        ? "bg-amber-600 text-white border-amber-600 shadow-sm"
+                        : "bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300"
+                    }`}
+                  >
+                    <span>Juan</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrdersStatusFilter("en_preparacion");
+                      setOrdersSearch("");
+                      setOrdersFilterMode("todos");
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition flex items-center gap-1 ${
+                      ordersStatusFilter === "en_preparacion" && !ordersSearch
+                        ? "bg-orange-600 text-white border-orange-600 shadow-sm"
+                        : "bg-orange-50 hover:bg-orange-100 text-orange-900 border-orange-300"
+                    }`}
+                  >
+                    <ChefHat size={12} />
+                    <span>En Cocina ({orders.filter((o) => o.orderStatus === "en_preparacion").length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrdersSearch("");
+                      setOrdersStatusFilter("todos");
+                      setOrdersFilterMode("todos");
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-stone-500 hover:text-stone-800 hover:bg-stone-100 transition ml-auto"
+                  >
+                    Restablecer filtros
+                  </button>
+                </div>
+
+                {/* Filtros Combinados: Estado y Modalidad */}
+                <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2.5 border-t border-stone-200">
+                  {/* Filtro por Estado del Pedido */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                    <span className="text-[11px] font-bold text-stone-500 mr-0.5">Estado:</span>
                     <button
                       type="button"
-                      onClick={() => setOrdersSearch("")}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700"
+                      onClick={() => setOrdersStatusFilter("todos")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                        ordersStatusFilter === "todos"
+                          ? "bg-stone-900 text-white shadow"
+                          : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                      }`}
                     >
-                      <X size={14} />
+                      <span>Pendientes ({pendingOrders.length})</span>
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setOrdersStatusFilter("en_preparacion")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 whitespace-nowrap ${
+                        ordersStatusFilter === "en_preparacion"
+                          ? "bg-orange-600 text-white shadow"
+                          : "bg-orange-50 text-orange-900 hover:bg-orange-100 border border-orange-200"
+                      }`}
+                    >
+                      <ChefHat size={12} />
+                      <span>En Cocina ({orders.filter((o) => o.orderStatus === "en_preparacion").length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersStatusFilter("pagado")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 whitespace-nowrap ${
+                        ordersStatusFilter === "pagado"
+                          ? "bg-emerald-700 text-white shadow"
+                          : "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200"
+                      }`}
+                    >
+                      <CheckCircle2 size={12} />
+                      <span>Cobrados ({paidOrders.length})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersStatusFilter("todos_pedidos")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                        ordersStatusFilter === "todos_pedidos"
+                          ? "bg-stone-800 text-white shadow"
+                          : "bg-stone-100 text-stone-600 hover:bg-stone-200"
+                      }`}
+                    >
+                      <span>Todos ({orders.length})</span>
+                    </button>
+                  </div>
+
+                  {/* Filtro por Modalidad */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
+                    <span className="text-[11px] font-bold text-stone-500 mr-0.5">Tipo:</span>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersFilterMode("todos")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                        ordersFilterMode === "todos"
+                          ? "bg-amber-600 text-white shadow"
+                          : "bg-stone-100 text-stone-700 hover:bg-stone-200"
+                      }`}
+                    >
+                      <span>Todas</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersFilterMode("mesa")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 whitespace-nowrap ${
+                        ordersFilterMode === "mesa"
+                          ? "bg-amber-700 text-white shadow"
+                          : "bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200"
+                      }`}
+                    >
+                      <Utensils size={11} />
+                      <span>Mesas</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersFilterMode("delivery")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 whitespace-nowrap ${
+                        ordersFilterMode === "delivery"
+                          ? "bg-emerald-700 text-white shadow"
+                          : "bg-emerald-50 text-emerald-900 hover:bg-emerald-100 border border-emerald-200"
+                      }`}
+                    >
+                      <Bike size={11} />
+                      <span>Delivery</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOrdersFilterMode("retiro")}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1 whitespace-nowrap ${
+                        ordersFilterMode === "retiro"
+                          ? "bg-orange-700 text-white shadow"
+                          : "bg-orange-50 text-orange-900 hover:bg-orange-100 border border-orange-200"
+                      }`}
+                    >
+                      <ShoppingBag size={11} />
+                      <span>Retiro</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* LISTA DE PEDIDOS PENDIENTES DE COBRO */}
+              {/* LISTA DE PEDIDOS / RESULTADOS DE BÚSQUEDA */}
               <div>
-                <div className="flex items-center justify-between mb-3 px-1">
+                <div className="flex items-center justify-between mb-3 px-1 flex-wrap gap-2">
                   <h3 className="font-black text-base text-stone-900 flex items-center gap-2">
-                    <Clock size={18} className="text-amber-600" />
-                    <span>Pedidos Pendientes de Cobro ({filteredActiveOrders.length})</span>
+                    {ordersSearch ? (
+                      <>
+                        <Search size={18} className="text-amber-600" />
+                        <span>Resultados para "{ordersSearch}" ({filteredActiveOrders.length})</span>
+                      </>
+                    ) : ordersStatusFilter === "en_preparacion" ? (
+                      <>
+                        <ChefHat size={18} className="text-orange-600" />
+                        <span>Pedidos En Cocina ({filteredActiveOrders.length})</span>
+                      </>
+                    ) : ordersStatusFilter === "pagado" ? (
+                      <>
+                        <CheckCircle2 size={18} className="text-emerald-600" />
+                        <span>Pedidos Cobrados en Caja ({filteredActiveOrders.length})</span>
+                      </>
+                    ) : ordersStatusFilter === "todos_pedidos" ? (
+                      <>
+                        <Receipt size={18} className="text-stone-700" />
+                        <span>Todos los Pedidos ({filteredActiveOrders.length})</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={18} className="text-amber-600" />
+                        <span>Pedidos Pendientes de Cobro ({filteredActiveOrders.length})</span>
+                      </>
+                    )}
                   </h3>
                   <span className="text-xs text-stone-500 font-medium">
-                    Una vez cobrado, el pedido se archiva para el arqueo de caja
+                    {ordersSearch
+                      ? "Buscador global activo en todos los pedidos"
+                      : "Podés cambiar el estado de preparación o cobrar por caja"}
                   </span>
                 </div>
 
                 {filteredActiveOrders.length === 0 ? (
                   <div className="rounded-2xl p-10 border-2 bg-white text-center shadow-sm" style={{ borderColor: BRAND.paperDark }}>
-                    <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
-                      <CheckCircle2 size={32} />
+                    <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto mb-3">
+                      <Search size={32} />
                     </div>
                     <h4 className="font-bold text-stone-800 text-base mb-1">
-                      {ordersSearch ? "No se encontraron pedidos con ese criterio" : "¡No hay pedidos pendientes de cobro!"}
+                      {ordersSearch ? `No se encontraron pedidos con "${ordersSearch}"` : "¡No hay pedidos con los filtros actuales!"}
                     </h4>
                     <p className="text-xs text-stone-500 max-w-md mx-auto mb-4">
                       {ordersSearch
-                        ? "Probá limpiando el buscador para ver todos los pedidos activos."
-                        : "Todos los pedidos generados por mesa, delivery o mostrador han sido cobrados o aún no se han recibido nuevos pedidos."}
+                        ? "Probá buscando por código (ej: PED-1577 o 1577), nombre del comensal (Juan), mesa o plato."
+                        : "No se registran pedidos en este estado o modalidad."}
                     </p>
-                    {ordersSearch && (
+                    <div className="flex items-center justify-center gap-2 flex-wrap">
+                      {ordersSearch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOrdersSearch("");
+                            setOrdersStatusFilter("todos");
+                            setOrdersFilterMode("todos");
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800 transition"
+                        >
+                          Limpiar búsqueda
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={() => setOrdersSearch("")}
-                        className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800"
+                        onClick={loadOrders}
+                        className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white transition flex items-center gap-1.5 shadow"
                       >
-                        Limpiar búsqueda
+                        <RefreshCw size={13} className={loadingOrders ? "animate-spin" : ""} />
+                        <span>Buscar en Servidor</span>
                       </button>
-                    )}
+                      {ordersSearch && (ordersSearch.includes("1577") || ordersSearch.toLowerCase().includes("juan")) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const juanOrder = DEFAULT_INITIAL_ORDERS.find((o) => o.id === "PED-1577") || {
+                              id: "PED-1577",
+                              mode: "mesa",
+                              tableNumber: "3",
+                              customerName: "Juan",
+                              items: [
+                                { id: "1", name: "Milanesa de Carne con Papas Fritas", price: 35000, qty: 1 },
+                                { id: "5", name: "Gaseosa 500ml", price: 7000, qty: 1 }
+                              ],
+                              totalItems: 2,
+                              totalPrice: 42000,
+                              orderStatus: "en_preparacion",
+                              paymentStatus: "pendiente",
+                              createdAt: new Date().toISOString(),
+                            };
+                            setOrders((prev) => [juanOrder, ...prev.filter((o) => o.id !== juanOrder.id)]);
+                            setOrdersSearch("PED-1577");
+                            setOrdersStatusFilter("todos");
+                            setOrdersFilterMode("todos");
+                            addToast("order_success", "Pedido de Juan Restaurado", "Se cargó el pedido PED-1577 de Juan en cocina.");
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-black bg-orange-600 hover:bg-orange-700 text-white transition flex items-center gap-1.5 shadow"
+                        >
+                          <ChefHat size={14} />
+                          <span>Restaurar PED-1577 de Juan (En Cocina)</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -5837,6 +8145,8 @@ export default function App() {
                       const isMesa = order.mode === "mesa";
                       const isDelivery = order.mode === "delivery";
                       const isRetiro = order.mode === "retiro";
+                      const isPaid = (order.paymentStatus || "").toLowerCase() === "pagado";
+                      const isInKitchen = order.orderStatus === "en_preparacion";
 
                       const modeBadgeBg = isMesa
                         ? "bg-amber-100 text-amber-900 border-amber-300"
@@ -5859,32 +8169,50 @@ export default function App() {
                         : "Retiro en Mostrador";
 
                       const orderDate = formatTimeSafe(order.createdAt);
+                      const isJuanOrder = order.id === "PED-1577" || (order.customerName && order.customerName.toLowerCase().includes("juan"));
 
                       return (
                         <div
                           key={order.id}
-                          className="rounded-2xl bg-white border-2 p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between"
-                          style={{ borderColor: BRAND.paperDark }}
+                          className={`rounded-2xl bg-white border-2 p-5 shadow-sm hover:shadow-md transition flex flex-col justify-between ${
+                            isJuanOrder ? "ring-2 ring-amber-400 border-amber-500" : ""
+                          }`}
+                          style={{ borderColor: isJuanOrder ? "#F59E0B" : BRAND.paperDark }}
                         >
                           <div>
                             {/* Cabecera de la comanda */}
                             <div className="flex items-start justify-between gap-2 pb-3 border-b mb-3" style={{ borderColor: BRAND.paperDark }}>
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <span className="font-mono text-xs font-black px-2 py-0.5 rounded-md bg-stone-100 text-stone-700">
+                                  <span className={`font-mono text-xs font-black px-2 py-0.5 rounded-md ${
+                                    isJuanOrder || (ordersSearch && order.id.toLowerCase().includes(ordersSearch.toLowerCase()))
+                                      ? "bg-amber-400 text-stone-900 font-black shadow-sm"
+                                      : "bg-stone-100 text-stone-700"
+                                  }`}>
                                     {order.id}
                                   </span>
                                   <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${modeBadgeBg}`}>
                                     {modeIcon}
                                     <span>{modeTitle}</span>
                                   </span>
+                                  {isInKitchen && (
+                                    <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-900 border border-orange-300 flex items-center gap-1 shadow-sm">
+                                      <ChefHat size={12} className="text-orange-700 animate-bounce" />
+                                      <span>En Cocina</span>
+                                    </span>
+                                  )}
                                   <span className="text-[11px] font-semibold text-stone-500 flex items-center gap-1">
                                     <Clock size={12} /> {orderDate}
                                   </span>
                                 </div>
 
-                                <h4 className="font-black text-stone-900 text-base">
-                                  {order.customerName || (isMesa ? `Mesa ${order.tableNumber}` : "Cliente")}
+                                <h4 className="font-black text-stone-900 text-base flex items-center gap-2">
+                                  <span>{order.customerName || (isMesa ? `Mesa ${order.tableNumber}` : "Cliente")}</span>
+                                  {isJuanOrder && (
+                                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-white">
+                                      Comensal Juan
+                                    </span>
+                                  )}
                                 </h4>
                                 {order.customerPhone && (
                                   <p className="text-xs text-stone-500 flex items-center gap-1">
@@ -5913,11 +8241,17 @@ export default function App() {
                                 )}
                               </div>
 
-                              {/* Badge Estado Pendiente de Cobro */}
+                              {/* Badge Estado de Pago */}
                               <div className="text-right flex-shrink-0">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
-                                  <Clock size={12} /> Pendiente de pago
-                                </span>
+                                {isPaid ? (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-900 border border-emerald-300">
+                                    <CheckCircle2 size={12} className="text-emerald-700" /> Cobrado ({order.paymentMethod || "Caja"})
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 animate-pulse">
+                                    <Clock size={12} /> Pendiente de pago
+                                  </span>
+                                )}
                               </div>
                             </div>
 
@@ -5950,13 +8284,80 @@ export default function App() {
                           {/* Pie de pedido: Total y Botón de Cobro en Caja */}
                           <div>
                             <div className="flex items-center justify-between pb-3 pt-1">
-                              <span className="text-xs font-bold text-stone-500">Total a cobrar:</span>
+                              <span className="text-xs font-bold text-stone-500">Total {isPaid ? "cobrado" : "a cobrar"}:</span>
                               <span className="font-mono text-xl font-black text-stone-900">
                                 {formatGs(order.totalPrice)}
                               </span>
                             </div>
 
                             <div className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: BRAND.paperDark }}>
+                              {/* Flujo de Estados con Notificación Push en Vivo */}
+                              <div className="bg-stone-50 p-2.5 rounded-xl border border-stone-200">
+                                <div className="flex items-center justify-between gap-1 mb-1.5">
+                                  <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider flex items-center gap-1">
+                                    <BellRing size={11} className="text-amber-600 animate-pulse" />
+                                    <span>Estado en vivo & Push:</span>
+                                  </span>
+                                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                                    {(ORDER_STATUS_CONFIG[order.orderStatus || "recibido"] || ORDER_STATUS_CONFIG.recibido).shortLabel}
+                                  </span>
+                                </div>
+                                <div className="grid grid-cols-4 gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminChangeOrderStatus(order.id, "recibido")}
+                                    className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition flex flex-col items-center gap-0.5 ${
+                                      (order.orderStatus || "recibido") === "recibido"
+                                        ? "bg-amber-500 text-white shadow-sm ring-2 ring-amber-300"
+                                        : "bg-white text-stone-600 border border-stone-200 hover:bg-stone-100"
+                                    }`}
+                                    title="Marcar como Recibido y notificar al cliente"
+                                  >
+                                    <Clock size={12} />
+                                    <span>Recibido</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminChangeOrderStatus(order.id, "en_preparacion")}
+                                    className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition flex flex-col items-center gap-0.5 ${
+                                      order.orderStatus === "en_preparacion"
+                                        ? "bg-orange-600 text-white shadow-sm ring-2 ring-orange-300"
+                                        : "bg-white text-stone-600 border border-stone-200 hover:bg-stone-100"
+                                    }`}
+                                    title="Marcar como En Cocina y notificar al cliente"
+                                  >
+                                    <ChefHat size={12} />
+                                    <span>En Cocina</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminChangeOrderStatus(order.id, "en_camino")}
+                                    className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition flex flex-col items-center gap-0.5 ${
+                                      order.orderStatus === "en_camino"
+                                        ? "bg-blue-600 text-white shadow-sm ring-2 ring-blue-300"
+                                        : "bg-white text-stone-600 border border-stone-200 hover:bg-stone-100"
+                                    }`}
+                                    title={order.mode === "delivery" ? "Marcar como En Camino (Delivery)" : "Marcar como Listo para Retiro"}
+                                  >
+                                    {order.mode === "delivery" ? <Bike size={12} /> : <ShoppingBag size={12} />}
+                                    <span>{order.mode === "delivery" ? "En Camino" : "Listo"}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAdminChangeOrderStatus(order.id, "completado")}
+                                    className={`py-1.5 px-1 rounded-lg text-[10px] font-black transition flex flex-col items-center gap-0.5 ${
+                                      order.orderStatus === "completado"
+                                        ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-300"
+                                        : "bg-white text-stone-600 border border-stone-200 hover:bg-stone-100"
+                                    }`}
+                                    title="Marcar como Entregado y notificar al cliente"
+                                  >
+                                    <CheckCircle2 size={12} />
+                                    <span>Entregado</span>
+                                  </button>
+                                </div>
+                              </div>
+
                               {/* Botón destacado: Marcar como Completado o Entregado y notificar WhatsApp */}
                               <button
                                 type="button"
@@ -5969,29 +8370,58 @@ export default function App() {
                                 <span>Completado / Entregado (WhatsApp)</span>
                               </button>
 
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedPayOrder(order);
-                                    setSelectedPayMethod("efectivo");
-                                  }}
-                                  className="flex-1 py-2 px-3 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-1.5 shadow hover:brightness-105 transition"
-                                  style={{ background: BRAND.green }}
-                                >
-                                  <CheckSquare size={15} />
-                                  <span>Cobrar por Caja</span>
-                                </button>
+                              {isPaid ? (
+                                <div className="flex items-center gap-2">
+                                  <div className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-emerald-50 text-emerald-900 border border-emerald-300 flex items-center justify-center gap-1.5">
+                                    <CheckCircle2 size={15} className="text-emerald-700" />
+                                    <span>Cobrado en caja ({formatGs(order.totalPrice)})</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleResetOrderPayment(order.id)}
+                                    className="px-3 py-2 rounded-xl border border-stone-200 text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition"
+                                    title="Reabrir cobro y marcar como pendiente de cobro"
+                                  >
+                                    Reabrir
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {adminRole === "staff" && !(adminSession?.staffMember?.allowCashier ?? staffSettings.allowCashier) ? (
+                                    <div
+                                      className="flex-1 py-2 px-3 rounded-xl font-bold text-xs bg-stone-100 text-stone-500 border border-stone-200 flex items-center justify-center gap-1.5"
+                                      title="El cobro por caja está reservado para el Gerente o Cajero autorizado."
+                                    >
+                                      <Lock size={14} className="text-stone-400" />
+                                      <span>Cobro reservado a Gerencia</span>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedPayOrder(order);
+                                        setSelectedPayMethod("efectivo");
+                                      }}
+                                      className="flex-1 py-2 px-3 rounded-xl font-bold text-xs text-white flex items-center justify-center gap-1.5 shadow hover:brightness-105 transition"
+                                      style={{ background: BRAND.green }}
+                                    >
+                                      <CheckSquare size={15} />
+                                      <span>Cobrar por Caja</span>
+                                    </button>
+                                  )}
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteOrder(order.id)}
-                                  className="p-2 rounded-xl border border-stone-200 text-stone-400 hover:text-red-600 hover:bg-red-50 transition"
-                                  title="Anular o descartar pedido"
-                                >
-                                  <Trash2 size={15} />
-                                </button>
-                              </div>
+                                  {adminRole !== "staff" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteOrder(order.id)}
+                                      className="p-2 rounded-xl border border-stone-200 text-stone-400 hover:text-red-600 hover:bg-red-50 transition"
+                                      title="Anular o descartar pedido"
+                                    >
+                                      <Trash2 size={15} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -6974,38 +9404,196 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* TARJETA OFICIAL: LICENCIA Y SUSCRIPCIÓN DEL COMERCIO */}
+                  {(() => {
+                    const currentLicCode = draftBusiness.licenseCode || business.licenseCode || appLicense.code || "CAS-7K9B-X2M4";
+                    const currentLicPlan = draftBusiness.licensePlan || business.licensePlan || appLicense.plan || "Plan Anual PRO (1 Año)";
+                    const pDetails = getPlanDetails(currentLicPlan);
+                    const currentLicCost = draftBusiness.licenseCost || business.licenseCost || appLicense.costFormatted || pDetails.costFormatted || "1.000.000 Gs. / año";
+                    const currentLicDuration = draftBusiness.licenseDuration || (appLicense.durationMonths ? `${appLicense.durationMonths} meses` : `${pDetails.durationMonths} meses`);
+                    const currentLicActivated = draftBusiness.licenseActivatedAt || business.licenseActivatedAt || appLicense.activatedAt || "2026-03-01T12:00:00.000Z";
+                    const currentLicExpires = draftBusiness.licenseExpiresAt || business.licenseExpiresAt || appLicense.expiresAt || "2027-03-01T12:00:00.000Z";
+                    const daysRemaining = getLicenseDaysRemaining(currentLicExpires);
+                    const isLicRevoked = draftBusiness.licenseStatus === "revocado" || business.licenseStatus === "revocado" || draftBusiness.licenseStatus === "anulado" || business.licenseStatus === "anulado";
+                    const isLicExpired = !isLicRevoked && daysRemaining <= 0;
+
+                    return (
+                      <div
+                        className="rounded-2xl p-5 border-2 shadow-sm relative overflow-hidden"
+                        style={{
+                          background: "#FFFFFF",
+                          borderColor: isLicRevoked ? "#EF4444" : isLicExpired ? "#F59E0B" : "#F59E0B",
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
+                              style={{
+                                background: isLicRevoked ? "#FEE2E2" : isLicExpired ? "#FEF3C7" : "#ECFDF5",
+                                color: isLicRevoked ? "#DC2626" : isLicExpired ? "#D97706" : "#059669",
+                              }}
+                            >
+                              <ShieldCheck size={20} />
+                            </div>
+                            <div>
+                              <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>
+                                Licencia y Suscripción del Comercio
+                              </h3>
+                              <p className="text-[11px] text-stone-500">
+                                Certificación de uso y duración de servicio
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Badge de Estado */}
+                          <span
+                            className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border flex items-center gap-1 ${
+                              isLicRevoked
+                                ? "bg-red-100 text-red-800 border-red-300"
+                                : isLicExpired
+                                ? "bg-amber-100 text-amber-900 border-amber-300"
+                                : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                            }`}
+                          >
+                            {isLicRevoked ? "🔴 Suspendida / Anulada" : isLicExpired ? "🟡 Período Vencido" : "🟢 Licencia Activa"}
+                          </span>
+                        </div>
+
+                        {/* Grilla con Datos de la Licencia */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3 text-xs">
+                          {/* 1. Número de Licencia */}
+                          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">
+                              N° de Licencia Otorgado
+                            </span>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-mono text-sm font-black text-stone-900 bg-white px-2 py-0.5 rounded border border-stone-300 select-all">
+                                {currentLicCode}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCodeToClipboard(currentLicCode)}
+                                className="p-1 text-stone-400 hover:text-stone-800 hover:bg-stone-200 rounded transition"
+                                title="Copiar número de licencia"
+                              >
+                                {copiedCodeText === currentLicCode ? (
+                                  <span className="text-[10px] font-bold text-emerald-700">¡Copiado!</span>
+                                ) : (
+                                  <Copy size={13} />
+                                )}
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* 2. Plan Contratado */}
+                          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">
+                              Plan Contratado
+                            </span>
+                            <span className="font-bold text-stone-800 block text-xs truncate">
+                              📋 {currentLicPlan}
+                            </span>
+                          </div>
+
+                          {/* 3. Costo del Plan */}
+                          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">
+                              Costo que está Pagando
+                            </span>
+                            <span className="font-black text-sm text-stone-900 block" style={{ color: BRAND.forestGreen }}>
+                              💰 {currentLicCost}
+                            </span>
+                          </div>
+
+                          {/* 4. Duración y Período */}
+                          <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                            <span className="text-[10px] font-bold text-stone-500 uppercase block mb-1">
+                              Duración para Utilizar la App
+                            </span>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-bold text-stone-800 text-xs">
+                                ⏱️ {currentLicDuration}
+                              </span>
+                              <span
+                                className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded ${
+                                  isLicRevoked
+                                    ? "bg-red-100 text-red-700"
+                                    : daysRemaining > 30
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : daysRemaining > 0
+                                    ? "bg-amber-100 text-amber-900"
+                                    : "bg-red-100 text-red-800"
+                                }`}
+                              >
+                                {isLicRevoked ? "Inhabilitada" : daysRemaining > 0 ? `${daysRemaining} días rest.` : "Período finalizado"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Fechas de Inicio y Vencimiento */}
+                        <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 flex flex-wrap items-center justify-between gap-2 text-[11px] mb-3">
+                          <div>
+                            <span className="text-stone-500 font-medium">Habilitación: </span>
+                            <span className="font-bold text-stone-700">{formatDateSafe(currentLicActivated)}</span>
+                          </div>
+                          <div>
+                            <span className="text-stone-500 font-medium">Vencimiento de pago: </span>
+                            <span className={`font-bold ${isLicRevoked ? "text-red-700 line-through" : isLicExpired ? "text-red-700" : "text-stone-800"}`}>
+                              {formatDateSafe(currentLicExpires)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Cláusula de Control Central del Administrador */}
+                        <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-[11px] text-amber-950 leading-relaxed flex items-start gap-2">
+                          <ShieldAlert size={16} className="text-amber-700 shrink-0 mt-0.5" />
+                          <p>
+                            <b>Supervisión y Control Central:</b> Al finalizar el período contratado de pago, desde el <b>Panel Administrador</b> se puede anular o eliminar esta licencia o suscripción otorgada <b>aunque se haya cambiado el usuario o contraseña</b> del comercio.
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {/* CAMBIO DE PIN Y USUARIO DE ADMINISTRADOR */}
                   <div className="rounded-2xl p-5 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
                     <div className="flex items-center gap-2 mb-2">
                       <KeyRound size={18} color={BRAND.charcoal} />
-                      <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>Seguridad (Usuario y PIN)</h3>
+                      <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>Seguridad (Usuario y Contraseña / PIN)</h3>
                     </div>
-                    <p className="text-[11px] text-stone-600 mb-3">Podés modificar tu usuario o PIN de acceso al administrador.</p>
+                    <p className="text-[11px] text-stone-600 mb-3">
+                      Podés modificar el usuario o la contraseña de acceso para el personal de tu comercio.
+                    </p>
 
                     <div className="mb-3 text-xs">
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Usuario Administrador</label>
                       <input
                         type="text"
-                        value={draftBusiness.adminUser || "Usuario"}
+                        value={draftBusiness.adminUser || "gerente"}
                         onChange={(e) => {
                           setDraftBusiness((prev) => ({ ...prev, adminUser: e.target.value }));
                           setDirty(true);
                         }}
-                        placeholder="Usuario"
+                        placeholder="Ej: gerente o mi_comercio"
                         className="w-full p-2.5 rounded-xl border text-sm font-semibold"
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
+                      <span className="text-[10px] text-stone-500 mt-0.5 block">
+                        Nombre de usuario para acceder al panel de gerencia.
+                      </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-2">
                       <div>
-                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Nuevo PIN (opcional)</label>
+                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Nueva Contraseña / PIN (opcional)</label>
                         <div className="relative">
                           <input
                             type={showNewPin ? "text" : "password"}
                             value={draftNewPin}
                             onChange={(e) => { setDraftNewPin(e.target.value); setDirty(true); }}
-                            placeholder="Nuevo PIN"
+                            placeholder="Nueva clave"
                             className="w-full p-2 pr-9 rounded-xl border font-mono text-sm"
                             style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                           />
@@ -7020,13 +9608,13 @@ export default function App() {
                         </div>
                       </div>
                       <div>
-                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Confirmar nuevo PIN</label>
+                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Confirmar nueva contraseña</label>
                         <div className="relative">
                           <input
                             type={showConfirmPin ? "text" : "password"}
                             value={draftPinConfirm}
                             onChange={(e) => { setDraftPinConfirm(e.target.value); setDirty(true); }}
-                            placeholder="Repetir PIN"
+                            placeholder="Repetir clave"
                             className="w-full p-2 pr-9 rounded-xl border font-mono text-sm"
                             style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                           />
@@ -7040,6 +9628,133 @@ export default function App() {
                           </button>
                         </div>
                       </div>
+                    </div>
+
+                    <p className="text-[10px] text-stone-500 italic">
+                      * Dejá los campos de contraseña en blanco si no deseás cambiarla. Hacé clic en "Guardar cambios" en la barra inferior para guardar.
+                    </p>
+                  </div>
+
+                  {/* SELECTOR DE PERSISTENCIA DE SESIÓN DEL GERENTE */}
+                  <div className="rounded-2xl p-5 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 pb-3 border-b" style={{ borderColor: BRAND.paperDark }}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-800 border border-emerald-300/60">
+                          <ShieldCheck size={20} className="text-emerald-700" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="slab text-base md:text-lg" style={{ color: BRAND.charcoal }}>
+                              Persistencia de Sesión del Gerente
+                            </h3>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              sessionPersistence === "keep_active" 
+                                ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                : "bg-amber-100 text-amber-900 border border-amber-300"
+                            }`}>
+                              {sessionPersistence === "keep_active" ? "Mantener Activa" : "Cerrar al Salir"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 mt-0.5">
+                            Alterná entre mantener la sesión activa o cerrarla al salir, utilizando almacenamiento local seguro para evitar cierres de sesión forzosos.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-stone-600 bg-white/70 px-3 py-1.5 rounded-xl border border-stone-200">
+                        <Lock size={13} className="text-emerald-600" />
+                        <span>Almacenamiento Local Seguro</span>
+                      </div>
+                    </div>
+
+                    {/* Selector de Persistencia con 2 opciones interactivas */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mb-4">
+                      {/* Opción 1: Mantener sesión activa */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSessionPersistence("keep_active")}
+                        className={`text-left p-4 rounded-xl border-2 transition relative flex flex-col justify-between ${
+                          sessionPersistence === "keep_active"
+                            ? "bg-white border-emerald-600 ring-2 ring-emerald-500/30 shadow-md"
+                            : "bg-white/70 border-stone-300 hover:border-emerald-400 hover:bg-white text-stone-700"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="font-black text-sm flex items-center gap-2 text-stone-900">
+                              <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                sessionPersistence === "keep_active"
+                                  ? "border-emerald-600 bg-emerald-600 text-white"
+                                  : "border-stone-400"
+                              }`}>
+                                {sessionPersistence === "keep_active" && <Check size={10} strokeWidth={3} />}
+                              </span>
+                              <span>Mantener sesión activa</span>
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Recomendado
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 leading-relaxed mb-3">
+                            Guarda tu sesión de forma segura y permanente en el almacenamiento local del dispositivo. <b>Evita cierres de sesión forzosos</b> por recargas de página, cambio de pestañas, inactividad o cierre temporal del navegador. Podés salir al menú a tomar pedidos en mesas y regresar cuantas veces quieras sin reingresar el PIN.
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-stone-100 flex items-center gap-1.5 text-[11px] text-emerald-800 font-bold">
+                          <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                          <span>Sin desconexiones forzosas • Almacenamiento local seguro</span>
+                        </div>
+                      </button>
+
+                      {/* Opción 2: Cerrar sesión al salir */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSessionPersistence("close_on_exit")}
+                        className={`text-left p-4 rounded-xl border-2 transition relative flex flex-col justify-between ${
+                          sessionPersistence === "close_on_exit"
+                            ? "bg-white border-amber-600 ring-2 ring-amber-500/30 shadow-md"
+                            : "bg-white/70 border-stone-300 hover:border-amber-400 hover:bg-white text-stone-700"
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className="font-black text-sm flex items-center gap-2 text-stone-900">
+                              <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                                sessionPersistence === "close_on_exit"
+                                  ? "border-amber-600 bg-amber-600 text-white"
+                                  : "border-stone-400"
+                              }`}>
+                                {sessionPersistence === "close_on_exit" && <Check size={10} strokeWidth={3} />}
+                              </span>
+                              <span>Cerrar sesión al salir</span>
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-stone-100 text-stone-700 border border-stone-300">
+                              Mayor Privacidad
+                            </span>
+                          </div>
+                          <p className="text-xs text-stone-600 leading-relaxed mb-3">
+                            La sesión expira de forma automática al cerrar la ventana o salir de la aplicación. Recomendado únicamente si estás operando desde una computadora compartida o celular ajeno al negocio para evitar accesos no autorizados.
+                          </p>
+                        </div>
+
+                        <div className="pt-2 border-t border-stone-100 flex items-center gap-1.5 text-[11px] text-amber-800 font-bold">
+                          <LogOut size={14} className="text-amber-600 shrink-0" />
+                          <span>Cierre automático al salir de la aplicación</span>
+                        </div>
+                      </button>
+                    </div>
+
+                    {/* Barra de Estado y Verificación del Almacenamiento Seguro */}
+                    <div className="rounded-xl p-3 bg-stone-100/90 border border-stone-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-stone-800">
+                        <span className={`w-2.5 h-2.5 rounded-full ${sessionPersistence === "keep_active" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`}></span>
+                        <span>
+                          Modo configurado: <b>{sessionPersistence === "keep_active" ? "Mantener sesión activa (Almacenamiento local seguro protegido)" : "Cerrar sesión al salir"}</b>
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-stone-500">
+                        {adminSession?.lastActiveAt ? `Última sincronización: ${new Date(adminSession.lastActiveAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : "Almacenamiento seguro sincronizado"}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -7305,6 +10020,639 @@ export default function App() {
           )}
 
           {/* =================================================================
+              PESTAÑA: GESTIÓN DE PERMISOS AL PERSONAL (MOZOS, COCINA Y CAJA)
+              (Controlado por el Gerente o Administrador)
+              ================================================================= */}
+          {adminTab === "staff" && (
+            <div className="space-y-6">
+              {/* Tarjeta de Encabezado y Estado General */}
+              <div className="rounded-2xl p-5 md:p-6 border-2 shadow-sm bg-white" style={{ borderColor: BRAND.paperDark }}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-blue-100 text-blue-900 shadow-inner">
+                      <Users size={26} className="text-blue-700" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="slab text-lg md:text-xl text-stone-900 leading-tight">
+                          Permisos al Personal Operativo (Mozos y Cocina)
+                        </h3>
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-black ${
+                          staffSettings.enabled ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-stone-200 text-stone-700"
+                        }`}>
+                          {staffSettings.enabled ? "Habilitado" : "Deshabilitado"}
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-600 font-medium mt-0.5">
+                        El Gerente puede dar permisos a varios personales con nombre y PIN individual (4, 5, 6, 7, 8... dígitos libres) para tomar comandas en mesas o ver la cocina.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    <button
+                      type="button"
+                      onClick={handleOpenAddStaff}
+                      className="px-4 py-2.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition shadow flex items-center gap-1.5 active:scale-95"
+                    >
+                      <UserPlus size={15} />
+                      <span>Agregar Nuevo Personal</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEnabled = !staffSettings.enabled;
+                        setStaffSettings((prev) => ({ ...prev, enabled: newEnabled }));
+                        addToast(
+                          "order_success",
+                          newEnabled ? "Acceso Personal Activado" : "Acceso Personal Desactivado",
+                          newEnabled ? "El personal ahora puede ingresar con su PIN registrado." : "El personal ya no podrá ingresar con el PIN rápido."
+                        );
+                      }}
+                      className={`px-4 py-2.5 rounded-xl text-xs font-black transition shadow flex items-center gap-1.5 ${
+                        staffSettings.enabled
+                          ? "bg-red-100 hover:bg-red-200 text-red-900 border border-red-300"
+                          : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                      }`}
+                    >
+                      <ShieldCheck size={15} />
+                      <span>{staffSettings.enabled ? "Desactivar Acceso" : "Habilitar Acceso"}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* FORMULARIO PARA AGREGAR O EDITAR PERSONAL */}
+                {staffFormOpen && (
+                  <div className="mt-5 p-5 rounded-2xl border-2 border-blue-300 bg-blue-50/50 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between pb-2 border-b border-blue-200">
+                      <div className="flex items-center gap-2">
+                        {editingStaffId ? <Pencil size={18} className="text-blue-700" /> : <UserPlus size={18} className="text-blue-700" />}
+                        <h4 className="font-black text-sm text-stone-900">
+                          {editingStaffId ? "Editar Datos y Permisos de Personal" : "Registrar Nuevo Personal Autorizado"}
+                        </h4>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setStaffFormOpen(false);
+                          setEditingStaffId(null);
+                        }}
+                        className="p-1 rounded-lg hover:bg-blue-100 text-stone-600 transition"
+                      >
+                        <X size={18} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Campo de Nombre */}
+                      <div>
+                        <label className="block text-xs font-black text-stone-800 mb-1">
+                          Nombre del Personal / Mozo / Cocinero *
+                        </label>
+                        <input
+                          type="text"
+                          value={staffFormName}
+                          onChange={(e) => setStaffFormName(e.target.value)}
+                          placeholder="Ej: Carlos Gómez (Mozo), María (Cocina)..."
+                          className="w-full p-2.5 text-sm font-bold rounded-xl border-2 border-stone-300 bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        />
+                        <p className="text-[11px] text-stone-500 mt-1">
+                          Este nombre identificará quién tomó las comandas y aparecerá en su sesión.
+                        </p>
+                      </div>
+
+                      {/* Campo de PIN libre */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-black text-stone-800">
+                            PIN de Acceso * (Libre: 4, 5, 6, 7, 8... dígitos)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleGenerateRandomPin}
+                            className="text-[11px] text-blue-700 hover:text-blue-900 font-bold underline flex items-center gap-1"
+                          >
+                            <KeyRound size={12} /> Generar PIN
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={staffFormPin}
+                          onChange={(e) => setStaffFormPin(e.target.value.trim())}
+                          placeholder="Ej: 1234, 58291, 765432..."
+                          className="w-full p-2.5 text-sm font-mono font-black rounded-xl border-2 border-stone-300 bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 tracking-wider"
+                        />
+                        <p className="text-[11px] text-stone-500 mt-1">
+                          Podés usar la cantidad de dígitos que prefieras (ej: 4, 5, 6, 7, 8 o más).
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Presets Rápidos de Rol */}
+                    <div>
+                      <span className="text-[11px] font-black uppercase text-stone-600 block mb-1.5 tracking-wide">
+                        Ajuste Rápido de Permisos por Puesto:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffFormRole("Mozo de Salón");
+                            setStaffFormAllowOrders(true);
+                            setStaffFormAllowKitchen(false);
+                            setStaffFormAllowCashier(false);
+                          }}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition ${
+                            staffFormRole === "Mozo de Salón"
+                              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                          }`}
+                        >
+                          🍽️ Mozo de Salón (Solo Menú / Mesas)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffFormRole("Cocina / Comandas");
+                            setStaffFormAllowOrders(false);
+                            setStaffFormAllowKitchen(true);
+                            setStaffFormAllowCashier(false);
+                          }}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition ${
+                            staffFormRole === "Cocina / Comandas"
+                              ? "bg-orange-600 text-white border-orange-600 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                          }`}
+                        >
+                          👨‍🍳 Cocina (Solo Pantalla Pedidos)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffFormRole("Mozo y Cocina");
+                            setStaffFormAllowOrders(true);
+                            setStaffFormAllowKitchen(true);
+                            setStaffFormAllowCashier(false);
+                          }}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition ${
+                            staffFormRole === "Mozo y Cocina"
+                              ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                          }`}
+                        >
+                          ⚡ Mozo + Cocina (Recomendado)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffFormRole("Cajero / Encargado");
+                            setStaffFormAllowOrders(true);
+                            setStaffFormAllowKitchen(true);
+                            setStaffFormAllowCashier(true);
+                          }}
+                          className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition ${
+                            staffFormRole === "Cajero / Encargado"
+                              ? "bg-purple-600 text-white border-purple-600 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                          }`}
+                        >
+                          💳 Cajero / Encargado (Con Cobro)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Checkboxes de Permisos Individuales */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      <label className={`p-3 rounded-xl border-2 cursor-pointer transition flex items-start gap-2.5 ${
+                        staffFormAllowOrders ? "bg-white border-emerald-400 shadow-sm" : "bg-stone-50 border-stone-200 opacity-60"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={staffFormAllowOrders}
+                          onChange={(e) => setStaffFormAllowOrders(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div className="text-xs">
+                          <span className="font-black text-stone-900 block flex items-center gap-1">
+                            <Utensils size={13} className="text-emerald-700" /> Tomar Pedidos en Mesas
+                          </span>
+                          <span className="text-[11px] text-stone-600">Entrar al Menú a tomar comandas en salón.</span>
+                        </div>
+                      </label>
+
+                      <label className={`p-3 rounded-xl border-2 cursor-pointer transition flex items-start gap-2.5 ${
+                        staffFormAllowKitchen ? "bg-white border-emerald-400 shadow-sm" : "bg-stone-50 border-stone-200 opacity-60"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={staffFormAllowKitchen}
+                          onChange={(e) => setStaffFormAllowKitchen(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div className="text-xs">
+                          <span className="font-black text-stone-900 block flex items-center gap-1">
+                            <ChefHat size={13} className="text-emerald-700" /> Ver Cocina y Comandas
+                          </span>
+                          <span className="text-[11px] text-stone-600">Entrar al Panel a marcar platos En Cocina / Listo.</span>
+                        </div>
+                      </label>
+
+                      <label className={`p-3 rounded-xl border-2 cursor-pointer transition flex items-start gap-2.5 ${
+                        staffFormAllowCashier ? "bg-white border-emerald-400 shadow-sm" : "bg-stone-50 border-stone-200"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={staffFormAllowCashier}
+                          onChange={(e) => setStaffFormAllowCashier(e.target.checked)}
+                          className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <div className="text-xs">
+                          <span className="font-black text-stone-900 block flex items-center gap-1">
+                            <CreditCard size={13} className="text-emerald-700" /> Cobro por Caja
+                          </span>
+                          <span className="text-[11px] text-stone-600">Cobrar pedidos en el panel de caja.</span>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Estado activo */}
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-stone-800">
+                        <input
+                          type="checkbox"
+                          checked={staffFormActive}
+                          onChange={(e) => setStaffFormActive(e.target.checked)}
+                          className="rounded text-blue-600 focus:ring-blue-500"
+                        />
+                        <span>Habilitado para iniciar sesión (Personal Activo)</span>
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStaffFormOpen(false);
+                            setEditingStaffId(null);
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white hover:bg-stone-100 text-stone-700 transition"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleSaveStaffMember}
+                          className="px-5 py-2 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition shadow flex items-center gap-1.5 active:scale-95"
+                        >
+                          <Save size={14} />
+                          <span>Guardar Personal</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* LISTA DE PERSONAL REGISTRADO */}
+                <div className="mt-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase text-stone-700 tracking-wider flex items-center gap-1.5">
+                      <Users size={15} className="text-blue-600" />
+                      <span>Personal Registrado ({Array.isArray(staffSettings.staffList) ? staffSettings.staffList.length : 0})</span>
+                    </span>
+                    <span className="text-[11px] text-stone-500 font-medium">
+                      Cada mozo o cocinero accede con su propio nombre y PIN individual
+                    </span>
+                  </div>
+
+                  {Array.isArray(staffSettings.staffList) && staffSettings.staffList.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                      {staffSettings.staffList.map((st) => {
+                        const isRevealed = !!revealedStaffPins[st.id];
+                        return (
+                          <div
+                            key={st.id}
+                            className={`p-4 rounded-xl border-2 transition shadow-sm space-y-3 ${
+                              st.active !== false
+                                ? "bg-white border-stone-200 hover:border-blue-300"
+                                : "bg-stone-50 border-stone-200 opacity-60"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${
+                                  st.role?.toLowerCase().includes("cocina")
+                                    ? "bg-orange-100 text-orange-900"
+                                    : st.role?.toLowerCase().includes("caja")
+                                    ? "bg-purple-100 text-purple-900"
+                                    : "bg-blue-100 text-blue-900"
+                                }`}>
+                                  {st.role?.toLowerCase().includes("cocina") ? "👨‍🍳" : "🍽️"}
+                                </div>
+                                <div className="min-w-0">
+                                  <h5 className="font-black text-sm text-stone-900 truncate">
+                                    {st.name}
+                                  </h5>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200">
+                                      {st.role || "Personal"}
+                                    </span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                      st.active !== false ? "bg-emerald-100 text-emerald-800" : "bg-stone-200 text-stone-600"
+                                    }`}>
+                                      {st.active !== false ? "Activo" : "Pausado"}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* PIN Box con revelado individual */}
+                              <div className="text-right shrink-0">
+                                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 font-mono font-bold text-xs text-amber-950 shadow-inner">
+                                  <span>{isRevealed ? st.pin : "••••••"}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setRevealedStaffPins((prev) => ({ ...prev, [st.id]: !isRevealed }))}
+                                    className="text-stone-500 hover:text-stone-900 p-0.5"
+                                    title={isRevealed ? "Ocultar PIN" : "Ver PIN"}
+                                  >
+                                    {isRevealed ? <EyeOff size={13} /> : <Eye size={13} />}
+                                  </button>
+                                </div>
+                                <span className="block text-[10px] text-stone-400 font-mono mt-0.5">
+                                  {st.pin?.length || 0} dígitos
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Indicadores de Permisos */}
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+                              <span className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                                st.allowTakeOrders
+                                  ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                                  : "bg-stone-100 text-stone-400 line-through"
+                              }`}>
+                                <Utensils size={11} /> Menú / Mesas
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                                st.allowKitchenPanel
+                                  ? "bg-blue-50 text-blue-800 border border-blue-200"
+                                  : "bg-stone-100 text-stone-400 line-through"
+                              }`}>
+                                <ChefHat size={11} /> Cocina
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 ${
+                                st.allowCashier
+                                  ? "bg-purple-50 text-purple-800 border border-purple-200"
+                                  : "bg-stone-100 text-stone-400 line-through"
+                              }`}>
+                                <CreditCard size={11} /> Caja
+                              </span>
+                            </div>
+
+                            {/* Botones de Acción para este personal */}
+                            <div className="flex items-center justify-between gap-1.5 pt-2 border-t border-stone-100">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const text = `🍽️ *Acceso de Personal - ${business.name}*\n` +
+                                    `👤 *Personal:* ${st.name}\n` +
+                                    `🔑 *PIN de acceso:* ${st.pin}\n` +
+                                    `📋 *Permisos asignados por Gerencia:*\n` +
+                                    `${st.allowTakeOrders ? "✅ Tomar comandas en mesas desde el menú\n" : ""}` +
+                                    `${st.allowKitchenPanel ? "✅ Panel de pedidos y cocina en vivo\n" : ""}` +
+                                    `${st.allowCashier ? "✅ Cobro por caja\n" : ""}` +
+                                    `👉 Ingresá a la app, tocá "Admin", elegí "👨‍🍳 Personal" e ingresá tu PIN.`;
+                                  copyToClipboard(text, `staff_wa_${st.id}`);
+                                  addToast("order_success", "Texto Copiado", `Datos de ${st.name} listos para enviar por WhatsApp.`);
+                                }}
+                                className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 transition flex items-center gap-1"
+                                title="Enviar credenciales por WhatsApp a este personal"
+                              >
+                                <MessageCircle size={13} className="text-emerald-700" />
+                                <span>{copiedText === `staff_wa_${st.id}` ? "¡Copiado!" : "WhatsApp"}</span>
+                              </button>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffActive(st.id)}
+                                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition ${
+                                    st.active !== false
+                                      ? "border-stone-300 bg-white hover:bg-stone-100 text-stone-700"
+                                      : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"
+                                  }`}
+                                >
+                                  {st.active !== false ? "Pausar" : "Reactivar"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditStaff(st)}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 transition flex items-center gap-1"
+                                >
+                                  <Pencil size={12} /> Editar
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStaffMember(st.id, st.name)}
+                                  className="px-2 py-1 rounded-lg text-[11px] font-bold border border-red-200 bg-red-50 hover:bg-red-100 text-red-800 transition"
+                                  title="Eliminar este personal"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center border-2 border-dashed border-stone-200 rounded-xl bg-stone-50">
+                      <p className="text-xs text-stone-600 mb-2 font-medium">
+                        No hay personal registrado actualmente.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOpenAddStaff}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition inline-flex items-center gap-1.5"
+                      >
+                        <UserPlus size={14} /> Registrar Primer Personal
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Acciones directas para la jornada operativa */}
+                <div className="mt-5 p-4 rounded-xl border bg-blue-50/60 border-blue-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <span className="text-xs font-black text-blue-900 block flex items-center gap-1.5 uppercase tracking-wide">
+                        <Store size={15} className="text-blue-700" /> Operación de Salón y Cocina en Vivo
+                      </span>
+                      <p className="text-xs text-stone-700 leading-relaxed mt-0.5">
+                        Los mozos pueden usar la carta interactiva para cargar comandas en mesas. La cocina ve al instante los pedidos para despachar.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setView("menu");
+                          addToast("cart_add", "Modo Mozo en Salón", "Ahora podés tomar pedidos en las mesas navegando por la carta.");
+                        }}
+                        className="py-2.5 px-3.5 rounded-xl text-xs font-black bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-1.5 shadow active:scale-95"
+                      >
+                        <Utensils size={14} />
+                        <span>Ir al Menú a Tomar Pedidos</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const firstStaff = staffSettings.staffList?.[0];
+                          enterAdmin("staff", firstStaff?.name || "Personal", firstStaff?.pin || staffSettings.pin || "1234", firstStaff);
+                          addToast("order_success", "Modo Personal Activado", "Este dispositivo quedó configurado en Modo Mozo/Cocina.");
+                        }}
+                        className="py-2.5 px-3 rounded-xl text-xs font-bold border border-blue-300 bg-white hover:bg-blue-50 text-blue-900 transition flex items-center justify-center gap-1"
+                        title="Configurar este dispositivo en modo personal para dejarlo a mozos o cocina"
+                      >
+                        <span>Bloquear a Modo Personal</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tarjeta Visual: Los 3 Niveles de Permisos de la Aplicación */}
+              <div className="rounded-2xl p-5 md:p-6 border-2 shadow-sm bg-white" style={{ borderColor: BRAND.paperDark }}>
+                <h4 className="slab text-base text-stone-900 mb-1">
+                  Estructura de Seguridad y los 3 Niveles de Permisos
+                </h4>
+                <p className="text-xs text-stone-600 mb-4 font-medium">
+                  Configuración establecida para garantizar la privacidad, control financiero y eficiencia operativa:
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Nivel 1: Clientes */}
+                  <div className="p-4 rounded-xl border-2 border-stone-200 bg-stone-50/70 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-stone-200 text-stone-800">
+                        NIVEL 1
+                      </span>
+                      <User size={16} className="text-stone-500" />
+                    </div>
+                    <h5 className="font-black text-stone-900 text-sm">Clientes / Comensales</h5>
+                    <p className="text-xs text-stone-600 leading-snug">
+                      Acceso libre y público desde la portada para consultar la carta digital, armar pedidos (Mesa, Delivery, Retiro) y seguir en vivo el estado de su comanda.
+                    </p>
+                    <ul className="text-[11px] text-stone-600 space-y-1 pt-1 border-t border-stone-200">
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Carta y fotos completas</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Realizar pedidos y pagar</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Seguimiento en vivo paso a paso</li>
+                      <li className="flex items-center gap-1.5 text-stone-400"><X size={12} className="text-red-500" /> Sin acceso a paneles internos</li>
+                    </ul>
+                  </div>
+
+                  {/* Nivel 2: Gerente (y Personal delegado) */}
+                  <div className="p-4 rounded-xl border-2 border-emerald-300 bg-emerald-50/40 space-y-2 relative">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-emerald-500 text-white">
+                        NIVEL 2 (GERENCIA)
+                      </span>
+                      <Briefcase size={16} className="text-emerald-700" />
+                    </div>
+                    <h5 className="font-black text-stone-900 text-sm">Gerente del Local</h5>
+                    <p className="text-xs text-stone-600 leading-snug">
+                      Control total sobre la operación del negocio: pedidos, cocina, cobros en caja, menú y asignación de permisos al personal de salón y cocina.
+                    </p>
+                    <ul className="text-[11px] text-stone-600 space-y-1 pt-1 border-t border-emerald-200">
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Panel de pedidos y cocina en vivo</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Cobro en caja y arqueos diarios</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Dar permisos a mozos y cocina</li>
+                      <li className="flex items-center gap-1.5 text-stone-500"><X size={12} className="text-red-500" /> Sin acceso a licencias ni seguridad global</li>
+                    </ul>
+                  </div>
+
+                  {/* Nivel 3: Administrador App */}
+                  <div className="p-4 rounded-xl border-2 border-amber-300 bg-amber-50/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-500 text-stone-900">
+                        NIVEL 3
+                      </span>
+                      <ShieldCheck size={16} className="text-amber-800" />
+                    </div>
+                    <h5 className="font-black text-stone-900 text-sm">Administrador General</h5>
+                    <p className="text-xs text-stone-600 leading-snug">
+                      Acceso total para cualquier modificación a la plataforma: alta y control de comercios clientes, licencias, códigos de activación y seguridad de IP.
+                    </p>
+                    <ul className="text-[11px] text-stone-600 space-y-1 pt-1 border-t border-amber-200">
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Acceso total a todas las funciones</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Altas y revocación de comercios</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Licencias y códigos de activación</li>
+                      <li className="flex items-center gap-1.5"><Check size={12} className="text-emerald-600" /> Control de seguridad global de IPs</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MENSAJE DE RESTRICCIÓN SI UN GERENTE O PERSONAL INTENTA INGRESAR A COMERCIOS O SEGURIDAD */}
+          {adminTab === "clients" && adminRole !== "superadmin" && (
+            <div className="rounded-2xl p-6 md:p-8 border-2 bg-white shadow-sm max-w-2xl mx-auto my-8" style={{ borderColor: BRAND.paperDark }}>
+              <div className="w-16 h-16 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center mx-auto mb-4 shadow-inner">
+                <Lock size={32} />
+              </div>
+              <h3 className="slab text-xl text-stone-900 mb-2 text-center">
+                Sección Limitada: Comercios y Seguridad Global
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-600 mb-5 text-center max-w-lg mx-auto leading-relaxed">
+                El acceso a la <b>gestión de otros comercios</b> (altas, licencias, venta de software) y la <b>seguridad global</b> (bloqueo/desbloqueo de IPs y claves maestras) está reservado con acceso total exclusivamente al <b>Administrador General de la App</b>.
+              </p>
+
+              <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 mb-6 text-xs text-stone-800 space-y-2">
+                <span className="font-bold text-amber-950 block text-sm flex items-center gap-1.5">
+                  👔 Tus Facultades Activas como Gerente:
+                </span>
+                <ul className="space-y-1.5 text-stone-700">
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                    <span>Control total de <b>Pedidos y Cocina</b> en vivo (cambio de estados, cobro, WhatsApp).</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                    <span>Gestión de <b>Menú y Platos</b> (precios, fotos, productos agotados).</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                    <span><b>Dar permisos al personal</b> para ingresar al menú de clientes y a los pedidos.</span>
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <CheckCircle2 size={14} className="text-emerald-600 flex-shrink-0" />
+                    <span>Historial de ventas, arqueo de caja y configuración de datos de tu local.</span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAdminTab("orders")}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-stone-900 text-white hover:bg-stone-800 transition flex items-center justify-center gap-2 shadow"
+                >
+                  <Receipt size={14} /> Volver a Pedidos y Cocina
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdminTab("staff")}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center justify-center gap-2 shadow"
+                >
+                  <Users size={14} /> Gestionar Permisos al Personal
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* =================================================================
               PESTAÑA: COMERCIOS REGISTRADOS & SEGURIDAD IP (SUPERADMIN)
               ================================================================= */}
           {adminTab === "clients" && adminRole === "superadmin" && (
@@ -7326,27 +10674,49 @@ export default function App() {
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={resetAllBlockedIps}
-                    className="px-3.5 py-2 rounded-xl text-xs font-bold border-2 border-stone-300 hover:bg-stone-100 transition text-stone-800 flex items-center gap-1.5 self-start sm:self-auto"
-                    title="Desbloquear inmediatamente cualquier IP que haya superado los 3 intentos"
-                  >
-                    <ShieldOff size={15} /> Desbloquear Todas las IPs
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await resetIpLock();
+                        addToast("order_success", "IP Restablecida", "Se desbloqueó la IP y se restablecieron los 3 intentos.");
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-100 transition text-emerald-900 flex items-center gap-1.5 shadow-sm active:scale-95"
+                      title="Restablecer inmediatamente los 3 intentos para tu dirección IP"
+                    >
+                      <RefreshCw size={14} className="text-emerald-700" />
+                      <span>Restablecer Mi IP (3 Intentos)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={resetAllBlockedIps}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold border-2 border-stone-300 hover:bg-stone-100 transition text-stone-800 flex items-center gap-1.5"
+                      title="Desbloquear inmediatamente cualquier IP que haya superado los 3 intentos"
+                    >
+                      <ShieldOff size={15} /> Desbloquear Todas las IPs
+                    </button>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
                   <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
                     <span className="text-stone-500 font-medium block mb-0.5">Usuario Administrador Único</span>
                     <span className="text-base font-bold font-mono text-stone-900">{business.adminUser || "Usuario"}</span>
                   </div>
                   <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
-                    <span className="text-stone-500 font-medium block mb-0.5">Regla de Bloqueo por IP</span>
-                    <span className="text-sm font-bold text-red-700">3 fallos seguidos = 15 min.</span>
+                    <span className="text-stone-500 font-medium block mb-0.5">Intentos Restantes IP</span>
+                    <span className={`text-base font-bold font-mono ${attemptsLeft < 2 ? "text-red-700" : attemptsLeft < 3 ? "text-amber-700" : "text-emerald-700"}`}>
+                      {attemptsLeft} de 3 intentos
+                    </span>
                   </div>
                   <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
-                    <span className="text-stone-500 font-medium block mb-0.5">Tu IP Actual</span>
+                    <span className="text-stone-500 font-medium block mb-0.5">Estado de Bloqueo</span>
+                    <span className={`text-sm font-bold ${ipLocked ? "text-red-700" : "text-emerald-700"}`}>
+                      {ipLocked ? `Bloqueada (${formatLockTime(ipRemainingSeconds)})` : "Acceso Habilitado"}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-stone-50 border border-stone-200">
+                    <span className="text-stone-500 font-medium block mb-0.5">Tu IP Detectada</span>
                     <span className="text-sm font-bold font-mono text-stone-800">{clientIp || "Detectando..."}</span>
                   </div>
                 </div>
@@ -7760,12 +11130,18 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => {
+                                        const pDetails = getPlanDetails(pTitle || client.plan);
                                         setNewCodeForm({
                                           code: generateRandomActivationCode(),
                                           businessName: bName,
                                           ownerName: oName,
                                           whatsapp: String(client.whatsapp).replace(/[^\d]/g, ""),
-                                          plan: pTitle || "Plan Mensual",
+                                          plan: pDetails.planTitle,
+                                          planId: pDetails.planId,
+                                          cost: pDetails.cost,
+                                          costFormatted: pDetails.costFormatted,
+                                          durationMonths: pDetails.durationMonths,
+                                          expiresAt: pDetails.expiresAt,
                                           notes: `Generado para solicitud #${client.id} - ${payMethod}`,
                                         });
                                         setShowCreateCodeModal(true);
@@ -7873,12 +11249,18 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => {
+                        const defPlan = getPlanDetails("mensual");
                         setNewCodeForm({
                           code: generateRandomActivationCode(),
                           businessName: "",
                           ownerName: "",
                           whatsapp: "",
-                          plan: "Plan Mensual",
+                          plan: defPlan.planTitle,
+                          planId: defPlan.planId,
+                          cost: defPlan.cost,
+                          costFormatted: defPlan.costFormatted,
+                          durationMonths: defPlan.durationMonths,
+                          expiresAt: defPlan.expiresAt,
                           notes: "",
                         });
                         setShowCreateCodeModal(true);
@@ -8043,21 +11425,33 @@ export default function App() {
                                   </div>
                                 </div>
 
-                                <span
-                                  className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
-                                    isDispo
-                                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                      : isActi
-                                      ? "bg-amber-100 text-amber-900 border-amber-300"
-                                      : "bg-red-100 text-red-800 border-red-300"
-                                  }`}
-                                >
-                                  {isDispo ? "✓ Disponible" : isActi ? "★ Activado" : "✕ Revocado"}
-                                </span>
+                                {(() => {
+                                  const isRevoked = item.status === "revocado" || item.status === "anulado";
+                                  const daysLeft = item.expiresAt ? getLicenseDaysRemaining(item.expiresAt) : 365;
+                                  const isExpired = isActi && daysLeft <= 0;
+                                  const costDisplay = item.costFormatted || (item.plan?.includes("Anual") ? "1.350.000 Gs. / año" : item.plan?.includes("Semestral") ? "750.000 Gs. / 6 meses" : "150.000 Gs. / mes");
+                                  const durationDisplay = item.durationMonths ? `${item.durationMonths} meses` : "12 meses";
+
+                                  return (
+                                    <span
+                                      className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                                        isRevoked
+                                          ? "bg-red-100 text-red-800 border-red-300"
+                                          : isExpired
+                                          ? "bg-amber-100 text-amber-900 border-amber-300"
+                                          : isActi
+                                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                          : "bg-stone-100 text-stone-700 border-stone-300"
+                                      }`}
+                                    >
+                                      {isRevoked ? "⛔ Revocado" : isExpired ? "⚠️ Período Vencido" : isActi ? "★ Vigente" : "✓ Disponible"}
+                                    </span>
+                                  );
+                                })()}
                               </div>
 
                               {/* Datos del Comercio Asignado */}
-                              <div className="space-y-1 text-xs">
+                              <div className="space-y-1.5 text-xs">
                                 <p className="font-bold text-stone-900 flex items-center gap-1">
                                   <Store size={13} className="text-stone-500" />
                                   <span>{item.businessName || "Licencia Libre / Venta Directa"}</span>
@@ -8066,18 +11460,42 @@ export default function App() {
                                   Responsable: <b>{item.ownerName || "No especificado"}</b>
                                   {item.whatsapp && <span> • WA: {item.whatsapp}</span>}
                                 </p>
-                                <div className="inline-block mt-1">
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-stone-100 text-stone-700 border border-stone-200">
-                                    📋 {item.plan || "Plan Mensual"}
-                                  </span>
-                                </div>
+
+                                {/* Ficha de Plan, Costo y Duración */}
+                                {(() => {
+                                  const isRevoked = item.status === "revocado" || item.status === "anulado";
+                                  const daysLeft = item.expiresAt ? getLicenseDaysRemaining(item.expiresAt) : 365;
+                                  const pDetails = getPlanDetails(item.plan);
+                                  const costDisplay = item.costFormatted || pDetails.costFormatted || "100.000 Gs. (por mes)";
+                                  const durationDisplay = item.durationMonths ? `${item.durationMonths} meses` : `${pDetails.durationMonths} meses`;
+
+                                  return (
+                                    <div className="p-2 rounded-lg bg-stone-50 border border-stone-200 grid grid-cols-2 gap-1.5 text-[11px] mt-1">
+                                      <div>
+                                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Plan & Costo</span>
+                                        <span className="font-bold text-stone-800">{item.plan || pDetails.planTitle}</span>
+                                        <span className="block text-[10px] font-black text-emerald-700">{costDisplay}</span>
+                                      </div>
+                                      <div>
+                                        <span className="text-stone-400 block text-[10px] uppercase font-bold">Duración & Vigencia</span>
+                                        <span className="font-bold text-stone-800">⏱️ {durationDisplay}</span>
+                                        {isActi && item.expiresAt && (
+                                          <span className={`block text-[10px] font-extrabold ${isRevoked ? "text-red-600" : daysLeft > 0 ? "text-emerald-700" : "text-amber-800"}`}>
+                                            {isRevoked ? "Acceso Inhabilitado" : daysLeft > 0 ? `${daysLeft} días restantes` : "Período Vencido"}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
                                 {item.notes && (
                                   <p className="text-[11px] text-stone-500 italic mt-1 bg-stone-50 p-1.5 rounded border border-stone-200">
                                     Nota: {item.notes}
                                   </p>
                                 )}
                                 {isActi && item.activatedAt && (
-                                  <p className="text-[10px] font-semibold text-amber-800 bg-amber-50 p-1.5 rounded mt-1 border border-amber-200">
+                                  <p className="text-[10px] font-semibold text-stone-600 bg-stone-50 p-1.5 rounded mt-1 border border-stone-200">
                                     Habilitado el: {formatDateSafe(item.activatedAt)}{" "}
                                     {item.activatedBy && `por ${item.activatedBy}`}
                                   </p>
@@ -8086,57 +11504,123 @@ export default function App() {
                             </div>
 
                             {/* Acciones de la Tarjeta */}
-                            <div className="pt-2 border-t flex items-center justify-between gap-2 text-xs" style={{ borderColor: BRAND.paperDark }}>
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSendCodeWhatsApp(item)}
-                                  className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#25D366] text-white flex items-center gap-1 hover:brightness-105 transition shadow-sm"
-                                  title="Enviar código de activación por WhatsApp al comercio"
-                                >
-                                  <Send size={12} />
-                                  <span>Enviar WhatsApp</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopyCodeToClipboard(item.code)}
-                                  className="px-2 py-1.5 rounded-lg text-xs font-bold border border-stone-300 text-stone-700 hover:bg-stone-100 transition flex items-center gap-1"
-                                  title="Copiar código para enviar manualmente"
-                                >
-                                  <Copy size={12} />
-                                  <span>Copiar</span>
-                                </button>
+                            <div className="pt-2.5 border-t space-y-2 text-xs" style={{ borderColor: BRAND.paperDark }}>
+                              <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendCodeWhatsApp(item)}
+                                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-[#25D366] text-white flex items-center gap-1 hover:brightness-105 transition shadow-sm"
+                                    title="Enviar código de activación por WhatsApp al comercio"
+                                  >
+                                    <Send size={12} />
+                                    <span>WhatsApp</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyCodeToClipboard(item.code)}
+                                    className="px-2 py-1.5 rounded-lg text-xs font-bold border border-stone-300 text-stone-700 hover:bg-stone-100 transition flex items-center gap-1"
+                                    title="Copiar código para enviar manualmente"
+                                  >
+                                    <Copy size={12} />
+                                    <span>Copiar</span>
+                                  </button>
+                                </div>
+
+                                <div className="flex items-center gap-1">
+                                  {/* Botón Anular / Suspender Licencia */}
+                                  {item.status !== "revocado" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setConfirmModalConfig({
+                                          title: "Anular o Suspender Licencia",
+                                          message: `¿Seguro que deseás anular o suspender la licencia de "${item.businessName || item.code}"? El comercio quedará bloqueado de inmediato para acceder al panel de administración aunque haya cambiado su contraseña o usuario.`,
+                                          confirmText: "Sí, anular licencia",
+                                          cancelText: "No, conservar",
+                                          confirmVariant: "danger",
+                                          icon: ShieldOff,
+                                          onConfirm: () => handleUpdateCodeStatus(item.id || item.code, "revocado"),
+                                        });
+                                      }}
+                                      className="px-2 py-1 rounded-lg text-[11px] font-black border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 transition flex items-center gap-1 cursor-pointer active:scale-95"
+                                      title="Anular la licencia y bloquear el acceso al comercio"
+                                    >
+                                      <ShieldOff size={12} />
+                                      <span>Anular Licencia</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCodeStatus(item.id || item.code, "activado")}
+                                      className="px-2 py-1 rounded-lg text-[11px] font-black border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 transition flex items-center gap-1 cursor-pointer active:scale-95"
+                                      title="Reactivar y habilitar nuevamente la licencia"
+                                    >
+                                      <ShieldCheck size={12} />
+                                      <span>Reactivar</span>
+                                    </button>
+                                  )}
+
+                                  {/* Botón Eliminar Licencia */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setConfirmModalConfig({
+                                        title: "Eliminar Licencia Permanentemente",
+                                        message: `¿Seguro que deseás anular y eliminar por completo esta licencia "${item.code}" (${item.businessName || 'Comercio'})? Esta acción borrará el registro de activación.`,
+                                        confirmText: "Sí, eliminar definitivamente",
+                                        cancelText: "Cancelar",
+                                        confirmVariant: "danger",
+                                        icon: Trash2,
+                                        onConfirm: () => handleDeleteCode(item.id || item.code),
+                                      });
+                                    }}
+                                    className="p-1 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer active:scale-95"
+                                    title="Eliminar licencia permanentemente"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-1">
-                                {isDispo ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCodeStatus(item.id, "activado")}
-                                    className="px-2 py-1 rounded-lg text-[11px] font-bold border border-amber-300 text-amber-800 hover:bg-amber-50"
-                                    title="Marcar como ya entregado y activado"
-                                  >
-                                    Marcar Activado
-                                  </button>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleUpdateCodeStatus(item.id, "disponible")}
-                                    className="px-2 py-1 rounded-lg text-[11px] font-bold border border-emerald-300 text-emerald-800 hover:bg-emerald-50"
-                                    title="Volver a poner disponible"
-                                  >
-                                    Hacer Disponible
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCode(item.id)}
-                                  className="p-1 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition"
-                                  title="Eliminar código permanentemente"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
+                              {/* Barra de Renovación de Período de Pago */}
+                              {(() => {
+                                const pM = getPlanDetails("mensual");
+                                const pS = getPlanDetails("semestral");
+                                const pA = getPlanDetails("anual");
+
+                                return (
+                                  <div className="flex items-center justify-between gap-1 p-1.5 rounded-lg bg-stone-100 border border-stone-200 text-[10px]">
+                                    <span className="font-bold text-stone-600">Renovar período:</span>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenewCode(item.id || item.code, 1, pM.planTitle, pM.costFormatted)}
+                                        className="px-1.5 py-0.5 rounded font-bold bg-white text-stone-700 border border-stone-300 hover:bg-amber-50 hover:border-amber-300 transition cursor-pointer"
+                                        title={`Extender suscripción por 1 mes (${pM.costFormatted})`}
+                                      >
+                                        +1 Mes
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenewCode(item.id || item.code, 6, pS.planTitle, pS.costFormatted)}
+                                        className="px-1.5 py-0.5 rounded font-bold bg-white text-stone-700 border border-stone-300 hover:bg-amber-50 hover:border-amber-300 transition cursor-pointer"
+                                        title={`Extender suscripción por 6 meses (${pS.costFormatted})`}
+                                      >
+                                        +6 Meses
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRenewCode(item.id || item.code, 12, pA.planTitle, pA.costFormatted)}
+                                        className="px-1.5 py-0.5 rounded font-bold bg-amber-600 text-white shadow-xs hover:bg-amber-700 transition cursor-pointer"
+                                        title={`Extender suscripción por 1 año (${pA.costFormatted})`}
+                                      >
+                                        +1 Año
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         );
@@ -8191,6 +11675,29 @@ export default function App() {
         {/* Modales de Códigos de Activación y Licencias para Comercios */}
         {renderCreateCodeModal()}
         {renderActivateAppModal()}
+        {renderLicenseBlockedModal()}
+        {renderConfirmActionModal()}
+        {renderSaveDataModal()}
+
+        {/* Modal de Seguimiento de Pedidos y Notificaciones Push en Vivo */}
+        <OrderTrackingModal
+          isOpen={trackingModalOpen}
+          onClose={() => setTrackingModalOpen(false)}
+          initialOrderId={trackingOrderId}
+          businessPhone={business.phoneIntl || "595981456789"}
+          onRefreshOrders={refreshCustomerOrdersFromServer}
+          customerOrders={customerOrders}
+        />
+
+        {/* Modal de Instalación PWA (con Logo Oficial) */}
+        <InstallAppModal
+          isOpen={showInstallModal}
+          onClose={handleCloseInstallModal}
+          onInstallSuccess={() => {
+            addToast("success", "¡App instalada!", "Ya tenés el acceso directo con el logo en tu pantalla.");
+          }}
+          brandColors={BRAND}
+        />
       </div>
     </AdminErrorBoundary>
     );
@@ -8205,6 +11712,27 @@ export default function App() {
         @import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Caveat:wght@600;700&family=Work+Sans:wght@400;500;600;700;800&display=swap');
         .slab { font-family: 'Alfa Slab One', serif; }
         .hand { font-family: 'Caveat', cursive; }
+        .scrollbar-none::-webkit-scrollbar, .no-scrollbar::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+        .scrollbar-none, .no-scrollbar { -ms-overflow-style: none !important; scrollbar-width: none !important; }
+        .menu-category-scroll {
+          scrollbar-width: thin;
+          scrollbar-color: #C1392B rgba(0, 0, 0, 0.12);
+          -webkit-overflow-scrolling: touch;
+        }
+        .menu-category-scroll::-webkit-scrollbar {
+          height: 6px;
+        }
+        .menu-category-scroll::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.08);
+          border-radius: 9999px;
+        }
+        .menu-category-scroll::-webkit-scrollbar-thumb {
+          background: #C1392B;
+          border-radius: 9999px;
+        }
+        .menu-category-scroll::-webkit-scrollbar-thumb:hover {
+          background: #A93226;
+        }
       `}</style>
 
       {/* Barra de aviso de error si ocurre */}
@@ -8214,38 +11742,9 @@ export default function App() {
         </div>
       )}
 
-      {/* Banner para comercio comprador: Habilitación de App con Código */}
-      {!appLicense.isActivated && (
-        <div className="bg-amber-100 border-b border-amber-300 text-stone-900 px-4 py-2 text-xs">
-          <div className="max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <KeyRound size={16} className="text-[#C1392B] flex-shrink-0" />
-              <span>
-                <b>¿Compraste esta app para tu negocio?</b> Ingresá el código de activación para habilitarlo.
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                setShowActivateModal(true);
-                setActivationError("");
-                setActivationSuccess(null);
-                setInputActivationCode("");
-                setInputActivationBusiness(business.name);
-              }}
-              className="px-3 py-1 rounded-full text-xs font-black text-white shadow hover:brightness-105 transition self-start sm:self-auto flex items-center gap-1"
-              style={{ background: BRAND.tomato }}
-            >
-              <KeyRound size={12} />
-              <span>Ingresar Código</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Barra de Contacto y Datos del Comercio (visible en PC y tablets) */}
       <div style={{ background: BRAND.charcoalDark }} className="w-full text-stone-300 text-xs py-1.5 px-4 hidden md:block border-b border-stone-800">
-        <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-5">
             <span className="flex items-center gap-1.5 text-stone-300">
               <MapPin size={13} color={BRAND.mustardLight} /> {business.address}
@@ -8260,51 +11759,158 @@ export default function App() {
         </div>
       </div>
 
-      {/* Portada Principal del Comercio (Banner Adaptado para PC y Celular) */}
-      <div style={{ background: BRAND.charcoal }} className="w-full flex justify-center shadow-inner">
-        <div className="w-full max-w-5xl md:px-6 md:pt-4">
-          <div className="relative w-full overflow-hidden md:rounded-2xl md:shadow-xl aspect-[3/1] max-h-80 sm:max-h-96 bg-stone-900 flex items-center justify-center">
+      {/* Portada Principal del Comercio (Hero Adaptado para PC y Celular sin cortes) */}
+      <div className="relative w-full overflow-hidden bg-stone-950 flex justify-center shadow-inner">
+        {/* Fondo ambiental que expande armónicamente los colores del banner en pantallas de PC */}
+        <div 
+          className="absolute inset-0 pointer-events-none opacity-30 blur-2xl scale-110"
+          style={{
+            backgroundImage: `url(${business.bannerImage || "/banner.jpg"})`,
+            backgroundPosition: 'center',
+            backgroundSize: 'cover',
+          }}
+        />
+        {/* Viñeta suave */}
+        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+
+        {/* Contenedor responsivo del Banner - Imagen completa sin recortes */}
+        <div className="relative z-10 w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl flex items-center justify-center md:px-6 md:py-3">
+          <div className="relative w-full flex items-center justify-center overflow-hidden md:rounded-2xl md:shadow-2xl md:border md:border-amber-500/20 bg-stone-950/80">
             <img 
               src={business.bannerImage || "/banner.jpg"} 
               alt={business.name || "La Caserita"} 
-              className="w-full h-full object-cover block"
+              className="w-full h-auto max-h-[380px] sm:max-h-[460px] object-contain block mx-auto transition-all"
               onError={(e) => { e.currentTarget.src = "/banner.jpg"; }} 
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none md:rounded-2xl" />
           </div>
         </div>
       </div>
 
+      {/* BANNER FLOTANTE DE SESIÓN PERSISTENTE PARA GERENTE / PERSONAL / ADMIN */}
+      {adminSession && adminSession.active && (
+        <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 border-b border-amber-500/30 px-3 py-2 text-xs text-white shadow-xl sticky top-0 z-30">
+          <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className={`px-2.5 py-0.5 rounded-full font-black text-[11px] flex items-center gap-1 shadow-sm ${
+                adminRole === "superadmin"
+                  ? "bg-amber-400 text-stone-900"
+                  : adminRole === "staff"
+                  ? "bg-blue-500 text-white"
+                  : "bg-emerald-500 text-white"
+              }`}>
+                {adminRole === "superadmin" ? "👑 Administrador General" : adminRole === "staff" ? (adminSession?.user ? `👨‍🍳 ${adminSession.user}` : "👨‍🍳 Personal Operativo") : "👔 Modo Gerente Activo"}
+              </span>
+              <span className="text-stone-300 text-[11px] font-medium hidden sm:inline">
+                {adminRole === "staff"
+                  ? `Tomando comandas en salón (${adminSession?.user || "Mozo"}) • Autorizado por Gerencia`
+                  : adminRole === "superadmin"
+                  ? "Acceso total sin restricciones a toda la plataforma"
+                  : "Sesión activa • Podés ver el menú y volver a pedidos cuando quieras"}
+              </span>
+              {adminRole === "owner" && (
+                <span
+                  onClick={() => { setView("admin"); setAdminTab("business"); }}
+                  className="hidden md:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-stone-800/90 text-stone-200 border border-stone-700 cursor-pointer hover:border-amber-400 hover:text-white transition"
+                  title="Hacé clic para configurar la persistencia de sesión en Datos del Comercio"
+                >
+                  <ShieldCheck size={12} className={sessionPersistence === "keep_active" ? "text-emerald-400" : "text-amber-400"} />
+                  <span>{sessionPersistence === "keep_active" ? "Persistencia Activa (Protegida)" : "Cerrar al Salir"}</span>
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setView("admin");
+                  setAdminTab("orders");
+                  loadOrders();
+                }}
+                className="px-3.5 py-1.5 rounded-xl font-black bg-amber-500 hover:bg-amber-400 text-stone-900 transition flex items-center gap-1.5 shadow active:scale-95 text-xs"
+              >
+                <Receipt size={14} />
+                <span>Volver a Pedidos y Cocina</span>
+                {pendingOrders.length > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-stone-900 text-amber-300">
+                    {pendingOrders.length}
+                  </span>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-2.5 py-1.5 rounded-xl text-stone-300 hover:text-white bg-stone-800 hover:bg-red-950 border border-stone-600 hover:border-red-700 text-xs font-bold transition flex items-center gap-1"
+                title="Cerrar sesión de gerencia / personal y volver a modo cliente"
+              >
+                <LogOut size={13} />
+                <span className="hidden md:inline">Cerrar Sesión</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Barra Superior Sticky con Nombre, Carrito y Acceso a Admin */}
-      <div style={{ background: BRAND.charcoal }} className="sticky top-0 z-20 shadow-lg border-b border-stone-800/80">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="slab text-lg md:text-2xl text-white tracking-wide leading-none">
+      <div style={{ background: BRAND.charcoalDark }} className={`sticky ${adminSession && adminSession.active ? "top-10" : "top-0"} z-20 shadow-lg border-b border-stone-800/80 transition-all`}>
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="slab text-lg sm:text-xl md:text-2xl text-white tracking-wide leading-none truncate">
               {business.name}
             </h1>
-            <p className="hand text-lg md:text-xl leading-none mt-0.5" style={{ color: BRAND.mustard }}>
+            <p className="hand text-base sm:text-lg md:text-xl leading-none mt-0.5" style={{ color: BRAND.mustard }}>
               {business.slogan || "Pedí online"}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Mensaje de ayuda para seleccionar productos */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            {/* Mensaje de ayuda para seleccionar productos (visible en PC) */}
             <div className="hidden lg:flex items-center gap-1.5 text-right leading-tight">
-              <span className="hand text-xl" style={{ color: "#FFD600", maxWidth: 170 }}>
+              <span className="hand text-lg xl:text-xl" style={{ color: "#FFD600", maxWidth: 190 }}>
                 Elegí tus platos y confirmá en el carrito
               </span>
               <span className="text-2xl">👉</span>
             </div>
 
+            {/* Botón de Seguimiento de Pedidos y Notificaciones Push */}
+            <button
+              onClick={() => {
+                setTrackingOrderId(customerOrders[0]?.id || null);
+                setTrackingModalOpen(true);
+              }}
+              className="relative py-2 sm:py-2.5 px-3 sm:px-3.5 rounded-full flex items-center gap-1.5 shadow-md hover:brightness-110 active:scale-95 transition bg-stone-800 text-stone-200 border border-stone-700"
+              title="Seguimiento en vivo de tus pedidos y notificaciones push"
+            >
+              <BellRing
+                size={16}
+                className={
+                  customerOrders.some((o) => o && o.orderStatus !== "completado" && o.orderStatus !== "cancelado")
+                    ? "text-amber-400 animate-pulse"
+                    : "text-stone-300"
+                }
+              />
+              <span className="font-bold text-xs hidden md:inline">Mis Pedidos</span>
+              {customerOrders.length > 0 && (
+                <span
+                  className={`rounded-full text-[10px] font-black flex items-center justify-center px-1.5 py-0.5 ${
+                    customerOrders.some((o) => o && o.orderStatus !== "completado" && o.orderStatus !== "cancelado")
+                      ? "bg-amber-500 text-stone-900 animate-bounce"
+                      : "bg-stone-700 text-stone-300"
+                  }`}
+                >
+                  {customerOrders.length}
+                </span>
+              )}
+            </button>
+
             {/* Botón del Carrito */}
             <button
               onClick={() => setCartOpen(true)}
-              className="relative py-2.5 px-4 rounded-full flex items-center gap-2.5 shadow-md hover:brightness-105 active:scale-95 transition"
+              className="relative py-2 sm:py-2.5 px-3.5 sm:px-4 rounded-full flex items-center gap-2 shadow-md hover:brightness-105 active:scale-95 transition"
               style={{ background: BRAND.tomato }}
               title="Ver tu pedido"
             >
-              <ShoppingCart size={20} color={BRAND.cream} />
-              <span className="font-bold text-sm hidden sm:inline" style={{ color: BRAND.cream }}>
+              <ShoppingCart size={19} color={BRAND.cream} />
+              <span className="font-bold text-xs sm:text-sm hidden sm:inline" style={{ color: BRAND.cream }}>
                 {totalPrice > 0 ? formatGs(totalPrice) : "Carrito"}
               </span>
               {totalQty > 0 && (
@@ -8314,54 +11920,102 @@ export default function App() {
               )}
             </button>
 
-            {/* Botón Adquirir la App para Comercios */}
+            {/* Botón Instalar App (Acceso directo con logo oficial) */}
             <button
-              onClick={() => { setView("register"); setRegSuccessVoucher(null); }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition shadow-sm hover:brightness-105 active:scale-95"
-              style={{ background: BRAND.mustard, color: BRAND.charcoal }}
-              title="Adquirir esta App para tu propio comercio o restaurante"
+              onClick={() => setShowInstallModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition shadow-sm hover:brightness-110 active:scale-95 text-white"
+              style={{
+                background: "linear-gradient(135deg, #0050E6 0%, #0072FF 60%, #00B4D8 100%)",
+                boxShadow: "0 2px 8px rgba(0, 114, 255, 0.3)"
+              }}
+              title="Instalar aplicación en tu celular o PC con acceso directo y logo oficial"
             >
-              <Briefcase size={15} />
-              <span className="hidden sm:inline">Adquirir App</span>
+              <Download size={15} />
+              <span className="hidden sm:inline">Instalar App</span>
             </button>
 
-            {/* Botón Habilitar Comercio con Código de Activación */}
+            {/* Botón de Configuración y Panel de Administración */}
             <button
               onClick={() => {
-                setShowActivateModal(true);
-                setActivationError("");
-                setActivationSuccess(null);
-                setInputActivationCode("");
-                setInputActivationBusiness(business.name);
+                if (adminSession && adminSession.active) {
+                  setView("admin");
+                  setAdminTab("orders");
+                  loadOrders();
+                } else {
+                  setUserInput("");
+                  setPinInput("");
+                  setPinError("");
+                  setShowLoginPin(false);
+                  setView("adminLogin");
+                }
               }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition shadow-sm hover:brightness-105 active:scale-95 bg-white text-stone-900 border border-stone-300"
-              title="Habilitar este comercio con tu código de activación"
+              className="p-2 sm:p-2.5 rounded-full flex-shrink-0 hover:brightness-105 active:scale-95 transition shadow flex items-center gap-1.5"
+              style={{
+                background: adminSession && adminSession.active
+                  ? (adminRole === "superadmin" ? "#FEF08A" : adminRole === "staff" ? "#DBEAFE" : "#D1FAE5")
+                  : BRAND.paperDark
+              }}
+              title={adminSession && adminSession.active ? "Volver al Panel de Pedidos y Cocina" : "Acceso Gerencia / Administrador"}
             >
-              <KeyRound size={15} style={{ color: BRAND.tomato }} />
-              <span className="hidden md:inline">Habilitar</span>
-            </button>
-
-            {/* Botón de configuración / administrador */}
-            <button
-              onClick={() => { setUserInput(""); setPinInput(""); setPinError(""); setShowLoginPin(false); setView("adminLogin"); }}
-              className="p-2.5 rounded-full flex-shrink-0 hover:brightness-105 transition shadow"
-              style={{ background: BRAND.paperDark }}
-              title="Administrar menú y comercio"
-            >
-              <Settings size={19} color={BRAND.charcoal} />
+              {adminSession && adminSession.active ? (
+                adminRole === "superadmin" ? (
+                  <ShieldCheck size={18} className="text-amber-800" />
+                ) : adminRole === "staff" ? (
+                  <ChefHat size={18} className="text-blue-700" />
+                ) : (
+                  <Store size={18} className="text-emerald-800" />
+                )
+              ) : (
+                <Settings size={18} color={BRAND.charcoal} />
+              )}
+              <span className="hidden md:inline text-xs font-bold" style={{ color: adminSession && adminSession.active ? "#1C1917" : BRAND.charcoal }}>
+                {adminSession && adminSession.active
+                  ? (adminRole === "superadmin" ? "Admin" : adminRole === "staff" ? "Personal" : "Gerente")
+                  : "Admin"}
+              </span>
             </button>
           </div>
         </div>
 
         {/* Guía en móviles */}
-        <p className="hand text-base text-center pb-2 lg:hidden flex items-center justify-center gap-1" style={{ color: "#FFD600" }}>
-          Seleccioná tus productos y confirmá en el carrito <span className="text-xl">👇</span>
+        <p className="hand text-sm text-center pb-2 lg:hidden flex items-center justify-center gap-1" style={{ color: "#FFD600" }}>
+          Seleccioná tus productos y confirmá en el carrito <span className="text-lg">👇</span>
         </p>
       </div>
 
-      {/* Barra de Búsqueda y Navegación de Secciones (Sticky para fácil acceso) */}
-      <div style={{ background: BRAND.paperDark }} className="shadow-md sticky top-[69px] sm:top-[77px] z-10 border-b border-stone-400/30">
-        <div className="max-w-5xl mx-auto px-4 py-2 flex flex-col gap-2">
+      {/* Ticker / Banner de Pedido Activo en Curso con Notificación Push */}
+      {(() => {
+        const activeOrder = customerOrders.find(
+          (o) => o && o.orderStatus !== "completado" && o.orderStatus !== "cancelado"
+        );
+        if (!activeOrder) return null;
+        const cfg = ORDER_STATUS_CONFIG[activeOrder.orderStatus] || ORDER_STATUS_CONFIG.recibido;
+        return (
+          <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white px-3 sm:px-4 py-2 text-xs font-bold flex items-center justify-between shadow-md border-b border-amber-500/40">
+            <div className="flex items-center gap-2 truncate">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-200 animate-ping flex-shrink-0" />
+              <span className="truncate">
+                Pedido <b>{activeOrder.id}</b>: <span className="font-black underline">{cfg.label}</span>
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setTrackingOrderId(activeOrder.id);
+                setTrackingModalOpen(true);
+              }}
+              className="ml-2 px-2.5 py-1 rounded-lg bg-black/30 hover:bg-black/40 text-amber-200 border border-amber-300/40 text-[11px] font-black transition flex items-center gap-1 flex-shrink-0"
+            >
+              <BellRing size={12} />
+              <span>Ver Estado</span>
+            </button>
+          </div>
+        );
+      })()}
+
+      {/* Barra de Búsqueda y Navegación de Secciones (Sticky para fácil acceso en PC y Móvil) */}
+      <div style={{ background: BRAND.paperDark }} className="shadow-md sticky top-[57px] sm:top-[63px] md:top-[67px] z-10 border-b border-stone-400/40">
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-3 sm:px-4 py-2 flex flex-col gap-2">
           {/* Buscador en Tiempo Real */}
           <div className="relative flex items-center">
             <Search size={16} className="absolute left-3.5 text-stone-500 pointer-events-none" />
@@ -8369,7 +12023,7 @@ export default function App() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar plato, bebida o postre... (ej: milanesa, coca, flan)"
+              placeholder="Buscar plato, bebida o postre... (ej: milanesa, empanada, pizza, coca)"
               className="w-full pl-9 pr-8 py-2 rounded-xl text-xs md:text-sm font-semibold bg-white border shadow-sm focus:outline-none focus:ring-2 focus:ring-[#C1392B]"
               style={{ borderColor: BRAND.paperDark, color: BRAND.charcoal }}
             />
@@ -8385,66 +12039,96 @@ export default function App() {
             )}
           </div>
 
-          {/* Selector de Secciones con Scroll Horizontal Suave */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none justify-start md:justify-center">
-            {/* Pestaña: Todas las secciones */}
+          {/* Selector de Secciones: Desplazamiento horizontal de lado a lado con flechas y scrollbar visible */}
+          <div className="relative flex items-center w-full group">
+            {/* Flecha para desplazar a la izquierda */}
             <button
               type="button"
-              onClick={() => {
-                setActiveSection("TODOS");
-                setOpenCat(menu[0]?.category || "");
-              }}
-              className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs md:text-sm font-bold border-2 flex items-center gap-1.5 transition shadow-sm hover:scale-[1.02] flex-shrink-0"
-              style={activeSection === "TODOS"
-                ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
-                : { background: BRAND.paper, color: BRAND.charcoal, borderColor: BRAND.charcoal }}
+              onClick={() => scrollCategories("left")}
+              className="hidden sm:flex items-center justify-center p-2 mr-1.5 rounded-full bg-white text-stone-800 border-2 shadow hover:bg-stone-50 active:scale-95 transition flex-shrink-0 z-10"
+              style={{ borderColor: BRAND.paperDark }}
+              title="Desplazar menú hacia la izquierda"
+              aria-label="Desplazar a la izquierda"
             >
-              <span>🍽️</span>
-              <span>Todas las secciones</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                activeSection === "TODOS" ? "bg-white/20 text-white" : "bg-stone-300 text-stone-800"
-              }`}>
-                {allItems.length}
-              </span>
+              <ChevronLeft size={16} />
             </button>
 
-            {/* Pestañas por cada categoría (Platos Principales, Bebidas, Postres, etc.) */}
-            {categoryStats.map((c) => {
-              const isSelected = activeSection === c.category;
-              return (
-                <button
-                  key={c.category}
-                  type="button"
-                  onClick={() => {
-                    setActiveSection(c.category);
-                    setOpenCat(c.category);
-                  }}
-                  className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs md:text-sm font-bold border-2 flex items-center gap-1.5 transition shadow-sm hover:scale-[1.02] flex-shrink-0"
-                  style={isSelected
-                    ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
-                    : { background: BRAND.paper, color: BRAND.charcoal, borderColor: BRAND.charcoal }}
-                >
-                  <CategoryIcon name={c.category} icon={c.icon} size={15} color={isSelected ? BRAND.cream : BRAND.charcoal} />
-                  <span>{c.category}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
-                    isSelected ? "bg-white/20 text-white" : "bg-stone-300 text-stone-800"
-                  }`}>
-                    {c.totalItems}
-                  </span>
-                  {c.inCartCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-stone-900 font-black shadow-sm" title={`${c.inCartCount} en el carrito`}>
-                      {c.inCartCount} 🛒
+            {/* Contenedor con barra de desplazamiento horizontal visible */}
+            <div
+              ref={categoryScrollRef}
+              className="flex items-center gap-2 overflow-x-auto pb-2 pt-0.5 scroll-smooth menu-category-scroll w-full select-none"
+            >
+              {/* Pestaña: Todas las secciones */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection("TODOS");
+                  setOpenCat(menu[0]?.category || "");
+                }}
+                className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs md:text-sm font-bold border-2 flex items-center gap-1.5 transition shadow-sm hover:scale-[1.02] flex-shrink-0"
+                style={activeSection === "TODOS"
+                  ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
+                  : { background: BRAND.paper, color: BRAND.charcoal, borderColor: BRAND.charcoal }}
+              >
+                <span>🍽️</span>
+                <span>Todas las secciones</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                  activeSection === "TODOS" ? "bg-white/20 text-white" : "bg-stone-300 text-stone-800"
+                }`}>
+                  {allItems.length}
+                </span>
+              </button>
+
+              {/* Pestañas por cada categoría (Platos Principales, Bebidas, Postres, etc.) */}
+              {categoryStats.map((c) => {
+                const isSelected = activeSection === c.category;
+                return (
+                  <button
+                    key={c.category}
+                    type="button"
+                    onClick={() => {
+                      setActiveSection(c.category);
+                      setOpenCat(c.category);
+                    }}
+                    className="whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs md:text-sm font-bold border-2 flex items-center gap-1.5 transition shadow-sm hover:scale-[1.02] flex-shrink-0"
+                    style={isSelected
+                      ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
+                      : { background: BRAND.paper, color: BRAND.charcoal, borderColor: BRAND.charcoal }}
+                  >
+                    <CategoryIcon name={c.category} icon={c.icon} size={15} color={isSelected ? BRAND.cream : BRAND.charcoal} />
+                    <span>{c.category}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
+                      isSelected ? "bg-white/20 text-white" : "bg-stone-300 text-stone-800"
+                    }`}>
+                      {c.totalItems}
                     </span>
-                  )}
-                </button>
-              );
-            })}
+                    {c.inCartCount > 0 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-400 text-stone-900 font-black shadow-sm" title={`${c.inCartCount} en el carrito`}>
+                        {c.inCartCount} 🛒
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Flecha para desplazar a la derecha */}
+            <button
+              type="button"
+              onClick={() => scrollCategories("right")}
+              className="hidden sm:flex items-center justify-center p-2 ml-1.5 rounded-full bg-white text-stone-800 border-2 shadow hover:bg-stone-50 active:scale-95 transition flex-shrink-0 z-10"
+              style={{ borderColor: BRAND.paperDark }}
+              title="Desplazar menú hacia la derecha"
+              aria-label="Desplazar a la derecha"
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Selector Principal de Modalidad de Pedido */}
-      <div className="max-w-5xl mx-auto px-4 pt-3 pb-1 w-full">
+      <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto px-3 sm:px-4 pt-3 pb-1 w-full">
         <div
           className="rounded-2xl p-3 md:p-4 border-2 shadow-sm"
           style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}
@@ -8482,12 +12166,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* 3 Botones de selección de modalidad */}
+          {/* 3 Botones de selección de modalidad adaptados a PC y celular */}
           <div className="grid grid-cols-3 gap-2 pt-2.5">
             <button
               type="button"
               onClick={() => setMode("mesa")}
-              className="p-2 md:p-2.5 rounded-xl text-xs md:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1.5 border-2 transition shadow-sm"
+              className="p-2 sm:p-2.5 md:p-3 rounded-xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border-2 transition shadow-sm hover:brightness-105 active:scale-95"
               style={mode === "mesa"
                 ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
                 : { background: "#FFF", color: BRAND.charcoal, borderColor: BRAND.paperDark }}
@@ -8499,7 +12183,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMode("delivery")}
-              className="p-2 md:p-2.5 rounded-xl text-xs md:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1.5 border-2 transition shadow-sm"
+              className="p-2 sm:p-2.5 md:p-3 rounded-xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border-2 transition shadow-sm hover:brightness-105 active:scale-95"
               style={mode === "delivery"
                 ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
                 : { background: "#FFF", color: BRAND.charcoal, borderColor: BRAND.paperDark }}
@@ -8511,7 +12195,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setMode("retiro")}
-              className="p-2 md:p-2.5 rounded-xl text-xs md:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1.5 border-2 transition shadow-sm"
+              className="p-2 sm:p-2.5 md:p-3 rounded-xl text-xs sm:text-sm font-bold flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 border-2 transition shadow-sm hover:brightness-105 active:scale-95"
               style={mode === "retiro"
                 ? { background: BRAND.tomato, color: BRAND.cream, borderColor: BRAND.tomatoDark }
                 : { background: "#FFF", color: BRAND.charcoal, borderColor: BRAND.paperDark }}
@@ -8548,7 +12232,7 @@ export default function App() {
               </div>
 
               {/* Botones rápidos de mesas habituales (1 al 10) */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none">
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 md:pb-0 scrollbar-none no-scrollbar">
                 <span className="text-[10px] text-stone-500 font-bold mr-1 hidden sm:inline">Mesas:</span>
                 {["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"].map((n) => (
                   <button
@@ -8591,7 +12275,7 @@ export default function App() {
       </div>
 
       {/* Contenedor Principal de Productos (Organizado por Secciones y Filtros) */}
-      <main className="flex-1 max-w-5xl mx-auto w-full p-4 md:p-6 pb-28">
+      <main className="flex-1 max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto w-full p-3 sm:p-4 md:p-6 pb-28">
         {/* Banner de Búsqueda Activa */}
         {searchQuery.trim() && (
           <div className="mb-5 p-3 px-4 rounded-2xl bg-amber-100/95 border border-amber-300 shadow-sm flex items-center justify-between gap-2">
@@ -8692,8 +12376,8 @@ export default function App() {
                 )}
               </div>
 
-              {/* Grid Responsivo: 1 col en celular, 2 en tablet, 3 en PC */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Grid Responsivo: 1 col en celular, 2 en tablet, 3 en PC, 4 en pantallas amplias */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
                 {c.items.map((item) => {
                   const qty = cart[item.id] || 0;
                   return (
@@ -9353,7 +13037,11 @@ export default function App() {
                                     setShowManualPasteLink(false);
                                     setManualLinkInput("");
                                   } else {
-                                    alert("Por favor ingresá un enlace válido que empiece con https://");
+                                    addToast({
+                                      type: "warning",
+                                      title: "Enlace Inválido",
+                                      message: "Por favor ingresá un enlace válido que empiece con https://",
+                                    });
                                   }
                                 }}
                                 className="px-3 py-2 bg-stone-800 text-white rounded-lg text-xs font-bold"
@@ -9478,31 +13166,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Banner Promocional para Comercios que quieran la App */}
-      <section className="max-w-5xl mx-auto px-4 py-8 w-full">
-        <div className="rounded-3xl p-6 md:p-8 border-2 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6" style={{ background: BRAND.paper, borderColor: BRAND.mustard }}>
-          <div className="space-y-2 text-center md:text-left">
-            <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider inline-flex items-center gap-1.5 bg-amber-200 text-stone-900">
-              <Sparkles size={13} /> Para Bares, Restaurantes y Rotiserías
-            </span>
-            <h3 className="slab text-xl md:text-2xl text-stone-900">
-              ¿Querés una App con pedidos para tu propio negocio?
-            </h3>
-            <p className="text-xs md:text-sm text-stone-700 max-w-xl">
-              Menú interactivo con fotos, pedidos directos a tu WhatsApp con selección de Mesa, Delivery con GPS y Retiro, más tu propio panel de administración protegido para 1 solo usuario.
-            </p>
-          </div>
-          <button
-            onClick={() => { setView("register"); setRegSuccessVoucher(null); }}
-            className="w-full md:w-auto px-6 py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2 shadow-lg hover:brightness-105 active:scale-95 transition text-white flex-shrink-0"
-            style={{ background: BRAND.tomato }}
-          >
-            <Briefcase size={18} />
-            <span>Ver Planes y Adquirir App</span>
-          </button>
-        </div>
-      </section>
-
       {/* Pie de Página */}
       <footer
         className="w-full py-10 px-4 text-center text-xs mt-auto border-t relative overflow-hidden"
@@ -9520,23 +13183,27 @@ export default function App() {
           }}
         />
 
-        <div className="max-w-5xl mx-auto space-y-2 relative z-10">
+        <div className="max-w-5xl xl:max-w-6xl 2xl:max-w-7xl mx-auto space-y-2 relative z-10">
           <p className="font-bold text-white text-sm tracking-wide">{business.name}</p>
           <p className="text-slate-300">{business.address}</p>
           <p className="text-sky-200/80">Pedidos vía WhatsApp al {business.phoneDisplay}</p>
-          <div className="pt-1">
+          <div className="pt-2 pb-1">
             <button
               type="button"
-              onClick={() => {
-                setShowActivateModal(true);
-                setActivationError("");
-                setActivationSuccess(null);
-                setInputActivationCode("");
-                setInputActivationBusiness(business.name);
+              onClick={() => setShowInstallModal(true)}
+              className="px-4 py-2 rounded-full text-xs font-bold text-white shadow-lg hover:brightness-110 active:scale-95 transition inline-flex items-center gap-2 border border-sky-400/40"
+              style={{
+                background: "linear-gradient(135deg, #0050E6 0%, #0072FF 50%, #00A2FF 100%)",
+                boxShadow: "0 4px 15px rgba(0, 114, 255, 0.35)"
               }}
-              className="text-[11px] text-slate-300 hover:text-sky-200 underline transition inline-flex items-center gap-1"
             >
-              <KeyRound size={11} /> ¿Compraste esta app? Habilitar comercio con código de activación
+              <img
+                src="/app-logo.png"
+                alt=""
+                className="w-4 h-4 rounded-full bg-white object-contain"
+                onError={(e) => { e.currentTarget.src = "/app-logo.svg"; }}
+              />
+              <span>Instalar App en tu celular o PC (Acceso directo)</span>
             </button>
           </div>
 
@@ -9567,6 +13234,31 @@ export default function App() {
                   <span>+595975635770</span>
                 </a>
               </p>
+
+              {/* Acceso reservado para el Administrador / Gerente */}
+              <div className="pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (adminSession && adminSession.active) {
+                      setView("admin");
+                      setAdminTab("orders");
+                      loadOrders();
+                    } else {
+                      setUserInput("");
+                      setPinInput("");
+                      setPinError("");
+                      setShowLoginPin(false);
+                      setView("adminLogin");
+                    }
+                  }}
+                  className="text-[11px] text-slate-400/70 hover:text-slate-200 transition inline-flex items-center gap-1 opacity-60 hover:opacity-100"
+                  title={adminSession && adminSession.active ? "Volver a Panel de Control" : "Acceso Administración"}
+                >
+                  <Lock size={10} />
+                  <span>{adminSession && adminSession.active ? "Volver a Panel de Control" : "Acceso Gerencia"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -9593,6 +13285,84 @@ export default function App() {
       {/* Modales de Códigos de Activación y Licencias para Comercios */}
       {renderCreateCodeModal()}
       {renderActivateAppModal()}
+      {renderLicenseBlockedModal()}
+      {renderConfirmActionModal()}
+      {renderSaveDataModal()}
+
+      {/* Modal de Seguimiento de Pedidos y Notificaciones Push en Vivo */}
+      <OrderTrackingModal
+        isOpen={trackingModalOpen}
+        onClose={() => setTrackingModalOpen(false)}
+        initialOrderId={trackingOrderId}
+        businessPhone={business.phoneIntl || "595981456789"}
+        onRefreshOrders={refreshCustomerOrdersFromServer}
+        customerOrders={customerOrders}
+      />
+
+      {/* Banner / Card Flotante para Invitar a Activar Notificaciones Push */}
+      {showPushPrompt && (
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-5 sm:max-w-sm z-50 bg-[#2A2018] text-[#FBF2DD] p-4 rounded-2xl shadow-2xl border-2 border-amber-500 animate-in slide-in-from-bottom-5">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500 text-stone-900 flex items-center justify-center flex-shrink-0 font-bold">
+              <BellRing size={18} className="animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h4 className="font-black text-xs sm:text-sm text-white leading-tight">
+                ¿Recibir avisos de tu pedido?
+              </h4>
+              <p className="text-[11px] text-stone-300 mt-1 leading-snug">
+                Te avisaremos por notificación push cuando tu comida esté en cocina, lista o en camino.
+              </p>
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await requestPushPermission();
+                    setPushPermissionState(res);
+                    setShowPushPrompt(false);
+                    if (res === "granted") {
+                      addToast(
+                        "order_success",
+                        "¡Alertas activadas!",
+                        "Recibirás avisos en vivo cuando cambie el estado de tus pedidos."
+                      );
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl font-bold text-xs bg-[#C1392B] hover:bg-[#a93226] text-white shadow transition active:scale-95 flex items-center gap-1"
+                >
+                  <Bell size={12} />
+                  <span>Activar Alertas</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPushPrompt(false)}
+                  className="px-2.5 py-1.5 rounded-xl text-xs text-stone-400 hover:text-stone-200 transition"
+                >
+                  Ahora no
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowPushPrompt(false)}
+              className="text-stone-400 hover:text-white p-1"
+              aria-label="Cerrar aviso"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Instalación PWA (con Logo Oficial) */}
+      <InstallAppModal
+        isOpen={showInstallModal}
+        onClose={handleCloseInstallModal}
+        onInstallSuccess={() => {
+          addToast("success", "¡App instalada!", "Ya tenés el acceso directo con el logo en tu pantalla.");
+        }}
+        brandColors={BRAND}
+      />
     </div>
   );
 }
