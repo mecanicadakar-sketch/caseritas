@@ -1120,21 +1120,11 @@ export default function App() {
     const defaultStaffList = [
       {
         id: "staff-1",
-        name: "Carlos Gómez (Mozo)",
+        name: "Carlos Gómez",
         pin: "1234",
-        role: "Mozo de Salón",
+        role: "Mozo",
         allowTakeOrders: true,
         allowKitchenPanel: false,
-        allowCashier: false,
-        active: true,
-      },
-      {
-        id: "staff-2",
-        name: "María (Cocina)",
-        pin: "5678",
-        role: "Cocina / Comandas",
-        allowTakeOrders: false,
-        allowKitchenPanel: true,
         allowCashier: false,
         active: true,
       },
@@ -1144,29 +1134,21 @@ export default function App() {
       const saved = localStorage.getItem("lacaserita_staff_settings");
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (!Array.isArray(parsed.staffList) || parsed.staffList.length === 0) {
-          parsed.staffList = [
-            {
-              id: "staff-legacy-1",
-              name: parsed.staffName || "Personal de Salón y Cocina",
-              pin: parsed.pin || "1234",
-              role: "Mozo / Cocina",
-              allowTakeOrders: parsed.allowTakeOrders ?? true,
-              allowKitchenPanel: parsed.allowKitchenPanel ?? true,
-              allowCashier: parsed.allowCashier ?? false,
-              active: true,
-            },
-            {
-              id: "staff-2",
-              name: "María (Cocina)",
-              pin: "5678",
-              role: "Cocina / Comandas",
-              allowTakeOrders: false,
-              allowKitchenPanel: true,
-              allowCashier: false,
-              active: true,
-            },
-          ];
+        if (Array.isArray(parsed.staffList)) {
+          // Filtrar textos de guía residuales (Personal de Salón y Cocina, María (Cocina))
+          parsed.staffList = parsed.staffList.filter(
+            (st) =>
+              st &&
+              st.name !== "Personal de Salón y Cocina" &&
+              st.name !== "María (Cocina)" &&
+              st.role !== "Mozo / Cocina" &&
+              st.role !== "Cocina / Comandas"
+          );
+        } else {
+          parsed.staffList = defaultStaffList;
+        }
+        if (!parsed.staffName || parsed.staffName === "Personal de Salón y Cocina") {
+          parsed.staffName = "Personal";
         }
         return parsed;
       }
@@ -1177,7 +1159,7 @@ export default function App() {
       allowTakeOrders: true,   // Ingresar al menú de clientes para tomar comandas en mesa
       allowKitchenPanel: true, // Ver panel de pedidos y cocina
       allowCashier: false,     // Cobrar en caja
-      staffName: "Personal de Salón y Cocina",
+      staffName: "Personal",
       staffList: defaultStaffList,
     };
   });
@@ -1353,23 +1335,13 @@ export default function App() {
     try {
       const saved = localStorage.getItem("lacaserita_orders");
       const custOrders = getCustomerOrders();
-      let list = [];
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          list = parsed.filter((o) => o && typeof o === "object");
+        if (Array.isArray(parsed)) {
+          return parsed.filter((o) => o && typeof o === "object");
         }
       }
-      if (list.length === 0) {
-        list = [...DEFAULT_INITIAL_ORDERS];
-      }
-      // Asegurar que pedidos por defecto (incluyendo Juan PED-1577) existan siempre en la lista
-      DEFAULT_INITIAL_ORDERS.forEach((defOrd) => {
-        if (!list.some((o) => o.id === defOrd.id)) {
-          list.push(defOrd);
-        }
-      });
-      // Asegurar que pedidos registrados por clientes en este dispositivo se reflejen de inmediato
+      let list = [...DEFAULT_INITIAL_ORDERS];
       if (Array.isArray(custOrders)) {
         custOrders.forEach((co) => {
           if (co && co.id && !list.some((o) => o.id === co.id)) {
@@ -1399,6 +1371,7 @@ export default function App() {
   const [historySearch, setHistorySearch] = useState("");
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null); // Detalle del pedido en modal
   const [showHistoryPdfModal, setShowHistoryPdfModal] = useState(false); // Modal para exportar PDF e imprimir reporte contable
+  const [selectedHistoryOrderIds, setSelectedHistoryOrderIds] = useState([]); // Pedidos tildados para eliminar del historial
 
   // Estado para la confirmación automática por WhatsApp de pedidos completados/entregados
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState(null);
@@ -2771,7 +2744,7 @@ export default function App() {
       if (!matchedStaff && (cleanStaffPin === (staffSettings.pin || "1234") || cleanStaffPin === "1234")) {
         matchedStaff = {
           id: "general-fallback",
-          name: cleanStaffName || staffSettings.staffName || "Personal de Salón y Cocina",
+          name: cleanStaffName || staffSettings.staffName || "Personal",
           pin: cleanStaffPin,
           role: "Personal",
           allowTakeOrders: staffSettings.allowTakeOrders ?? true,
@@ -2844,7 +2817,7 @@ export default function App() {
         active: true,
       };
       enterAdmin("staff", staffObj.name, cleanPin, staffObj);
-      addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste en Modo Personal (Mozo / Cocina).");
+      addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste en Modo Personal.");
       return;
     }
 
@@ -3779,6 +3752,7 @@ export default function App() {
 
   const handleDeleteOrder = async (orderId) => {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
+    setSelectedHistoryOrderIds((prev) => prev.filter((id) => id !== orderId));
     addToast(
       "cart_clear",
       "Pedido Eliminado",
@@ -3797,6 +3771,126 @@ export default function App() {
       });
     } catch (err) {
       console.warn("Aviso borrar pedido:", err);
+    }
+  };
+
+  // Eliminación de pedidos en lote (tildados o todo el historial)
+  const handleDeleteOrdersBatch = async (orderIdsToDelete) => {
+    if (!Array.isArray(orderIdsToDelete) || orderIdsToDelete.length === 0) return;
+    const idsSet = new Set(orderIdsToDelete);
+    setOrders((prev) => prev.filter((o) => !idsSet.has(o.id)));
+    setSelectedHistoryOrderIds((prev) => prev.filter((id) => !idsSet.has(id)));
+
+    // Asegurar persistencia inmediata en localStorage
+    try {
+      const saved = localStorage.getItem("lacaserita_orders");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.filter((o) => o && !idsSet.has(o.id));
+          localStorage.setItem("lacaserita_orders", JSON.stringify(updated));
+        }
+      }
+    } catch (e) {}
+
+    addToast(
+      "cart_clear",
+      orderIdsToDelete.length === 1 ? "Pedido Eliminado" : "Historial Actualizado",
+      orderIdsToDelete.length === 1
+        ? `El pedido ${orderIdsToDelete[0]} fue eliminado del historial.`
+        : `Se eliminaron ${orderIdsToDelete.length} pedidos del historial.`
+    );
+
+    try {
+      for (const orderId of orderIdsToDelete) {
+        fetch(SHEETS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user: userInput || "Usuario",
+            pin: pinInput || "Ricaji270985#",
+            action: "deleteOrder",
+            orderId,
+          }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      console.warn("Aviso borrar pedidos en lote:", err);
+    }
+  };
+
+  // Tildar / destildar un pedido específico del historial
+  const handleToggleSelectHistoryOrder = (orderId) => {
+    setSelectedHistoryOrderIds((prev) =>
+      prev.includes(orderId) ? prev.filter((id) => id !== orderId) : [...prev, orderId]
+    );
+  };
+
+  // Tildar o destildar todos los pedidos visibles según filtros
+  const handleToggleSelectAllHistoryOrders = () => {
+    if (!Array.isArray(filteredHistoryOrders) || filteredHistoryOrders.length === 0) return;
+    const allFilteredSelected = filteredHistoryOrders.every((o) =>
+      selectedHistoryOrderIds.includes(o.id)
+    );
+    if (allFilteredSelected) {
+      const filteredIdsSet = new Set(filteredHistoryOrders.map((o) => o.id));
+      setSelectedHistoryOrderIds((prev) => prev.filter((id) => !filteredIdsSet.has(id)));
+    } else {
+      const newIds = new Set([...selectedHistoryOrderIds, ...filteredHistoryOrders.map((o) => o.id)]);
+      setSelectedHistoryOrderIds(Array.from(newIds));
+    }
+  };
+
+  // Confirmación interactiva para eliminar historial o elementos tildados
+  const handleDeleteHistoryPrompt = () => {
+    if (orders.length === 0) {
+      addToast("alert", "Historial vacío", "No hay pedidos registrados en el historial para eliminar.");
+      return;
+    }
+
+    // 1. Si hay pedidos tildados individualmente
+    if (selectedHistoryOrderIds.length > 0) {
+      setConfirmModalConfig({
+        title: `¿Eliminar ${selectedHistoryOrderIds.length} pedidos tildados?`,
+        message: `Se eliminarán permanentemente los ${selectedHistoryOrderIds.length} pedidos seleccionados del historial de ventas. Esta acción no se puede deshacer.`,
+        confirmText: `Eliminar ${selectedHistoryOrderIds.length} pedidos`,
+        cancelText: "Cancelar",
+        confirmVariant: "danger",
+        icon: Trash2,
+        onConfirm: () => {
+          handleDeleteOrdersBatch(selectedHistoryOrderIds);
+        },
+      });
+      return;
+    }
+
+    // 2. Si no hay nada tildado pero hay filtros activos
+    const isFiltered = filteredHistoryOrders.length > 0 && filteredHistoryOrders.length < orders.length;
+    if (isFiltered) {
+      setConfirmModalConfig({
+        title: "¿Eliminar pedidos del historial?",
+        message: `No seleccionaste pedidos específicos con las casillas.\n\n¿Deseas eliminar los ${filteredHistoryOrders.length} pedidos filtrados en pantalla o vaciar todo el historial (${orders.length} pedidos)?\n\nTip: Para eliminar solo ciertos pedidos, podés tildar la casilla a la izquierda de cada pedido en la tabla.`,
+        confirmText: `Eliminar ${filteredHistoryOrders.length} pedidos filtrados`,
+        cancelText: "Cancelar",
+        confirmVariant: "danger",
+        icon: Trash2,
+        onConfirm: () => {
+          handleDeleteOrdersBatch(filteredHistoryOrders.map((o) => o.id));
+        },
+      });
+    } else {
+      // 3. Vaciar todo el historial
+      setConfirmModalConfig({
+        title: "¿Eliminar todo el historial de pedidos?",
+        message: `¿Estás seguro de que deseas eliminar permanentemente todos los ${orders.length} pedidos del historial?\n\nTip: Para eliminar solo ciertos pedidos, podés tildar sus casillas correspondientes en la lista.`,
+        confirmText: `Eliminar todo el historial (${orders.length})`,
+        cancelText: "Cancelar",
+        confirmVariant: "danger",
+        icon: Trash2,
+        onConfirm: () => {
+          handleDeleteOrdersBatch(orders.map((o) => o.id));
+        },
+      });
     }
   };
 
@@ -6576,7 +6670,7 @@ export default function App() {
               type="button"
               onClick={() => {
                 setLoginMode("staff");
-                setUserInput("Personal");
+                setUserInput("");
                 setPinInput("");
                 setPinError("");
               }}
@@ -6612,45 +6706,16 @@ export default function App() {
             {loginMode === "staff" ? (
               <div className="space-y-3">
                 <div>
-                  <div className="flex items-center justify-between mb-1 ml-1">
-                    <label className="text-xs font-bold" style={{ color: BRAND.charcoal }}>
-                      Nombre del Personal / Mozo
-                    </label>
-                    <span className="text-[10px] text-stone-500 italic">
-                      Escribí tu nombre o tocalo abajo
-                    </span>
-                  </div>
+                  <label className="block text-xs font-bold mb-1 ml-1" style={{ color: BRAND.charcoal }}>
+                    Usuario
+                  </label>
                   <input
                     type="text"
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
-                    placeholder="Ej: Carlos Gómez, María..."
-                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal"
-                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                    placeholder="Usuario"
+                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                   />
-                  {Array.isArray(staffSettings.staffList) && staffSettings.staffList.filter((s) => s.active !== false).length > 0 && (
-                    <div className="flex items-center gap-1.5 flex-wrap mt-2 px-0.5">
-                      <span className="text-[10px] text-stone-500 font-bold">Personal:</span>
-                      {staffSettings.staffList.filter((s) => s.active !== false).map((st) => (
-                        <button
-                          key={st.id}
-                          type="button"
-                          onClick={() => {
-                            setUserInput(st.name);
-                            setPinError("");
-                          }}
-                          className={`text-xs px-2.5 py-1 rounded-lg border font-bold transition flex items-center gap-1 ${
-                            userInput === st.name
-                              ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                              : "bg-white text-stone-700 border-stone-300 hover:bg-blue-50"
-                          }`}
-                        >
-                          <span>{st.name}</span>
-                          <span className="text-[10px] opacity-80 font-normal">({st.role || "Personal"})</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 <div>
@@ -6665,8 +6730,7 @@ export default function App() {
                       value={pinInput}
                       onChange={(e) => setPinInput(e.target.value)}
                       placeholder="Ingresar PIN"
-                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
-                      style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                     />
                     <button
                       type="button"
@@ -6677,11 +6741,6 @@ export default function App() {
                     >
                       {showLoginPin ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5">
-                    <span className="font-semibold text-stone-600">
-                      🔒 PIN individual otorgado por Gerencia (4, 5, 6, 7, 8... dígitos)
-                    </span>
                   </div>
                 </div>
               </div>
@@ -6697,9 +6756,8 @@ export default function App() {
                     disabled={(ipLocked && loginMode !== "superadmin") || verifying}
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
-                    placeholder={loginMode === "owner" ? "Ej: gerente o usuario" : "Ej: usuario o admin"}
-                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
-                    style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                    placeholder="Usuario"
+                    className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                   />
                 </div>
                 <div>
@@ -6716,8 +6774,7 @@ export default function App() {
                       value={pinInput}
                       onChange={(e) => setPinInput(e.target.value)}
                       placeholder="Ingresar PIN"
-                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90"
-                      style={{ borderColor: BRAND.paperDark, background: BRAND.cream, color: BRAND.charcoal }}
+                      className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                     />
                     <button
                       type="button"
@@ -6809,7 +6866,7 @@ export default function App() {
             ) : (ipLocked && loginMode === "superadmin") ? (
               "Desbloquear IP como Administrador"
             ) : loginMode === "staff" ? (
-              userInput.trim() ? `Ingresar como ${userInput.trim()}` : "Ingresar como Personal (Mozo / Cocina)"
+              userInput.trim() ? `Ingresar como ${userInput.trim()}` : "Ingresar como Personal"
             ) : loginMode === "owner" ? (
               "Ingresar al Panel de Gerente"
             ) : (
@@ -7514,7 +7571,7 @@ export default function App() {
                   {adminRole === "superadmin"
                     ? "👑 Administrador App"
                     : adminRole === "staff"
-                    ? (adminSession?.user ? `👨‍🍳 ${adminSession.user}` : "👨‍🍳 Personal (Mozo/Cocina)")
+                    ? (adminSession?.user ? `👨‍🍳 ${adminSession.user}` : "👨‍🍳 Personal")
                     : "👔 Gerente Local"}
                 </span>
                 <span className="hidden sm:inline text-xs font-bold" style={{ color: BRAND.mustardLight }}>
@@ -8683,6 +8740,28 @@ export default function App() {
                       <FileText size={15} className="text-amber-300" />
                       <span>Exportar PDF / Imprimir</span>
                     </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteHistoryPrompt}
+                      disabled={orders.length === 0}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-black border transition flex items-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 ${
+                        selectedHistoryOrderIds.length > 0
+                          ? "bg-red-600 hover:bg-red-700 text-white border-red-700 shadow-md animate-pulse"
+                          : "bg-red-50 hover:bg-red-100 text-red-700 border-red-300"
+                      }`}
+                      title={
+                        selectedHistoryOrderIds.length > 0
+                          ? `Eliminar los ${selectedHistoryOrderIds.length} pedidos tildados`
+                          : "Eliminar historial de pedidos"
+                      }
+                    >
+                      <Trash2 size={14} className={selectedHistoryOrderIds.length > 0 ? "text-white" : "text-red-600"} />
+                      <span>
+                        {selectedHistoryOrderIds.length > 0
+                          ? `Eliminar Historial (${selectedHistoryOrderIds.length})`
+                          : "Eliminar Historial"}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
@@ -8958,6 +9037,82 @@ export default function App() {
 
                 {/* LISTADO / TABLA DE PEDIDOS */}
                 <div className="mt-5">
+                  {/* BARRA DE ACCIÓN PARA PEDIDOS TILDADOS */}
+                  {selectedHistoryOrderIds.length > 0 && (
+                    <div className="mb-4 p-3.5 px-4 rounded-xl border-2 border-red-300 bg-red-50 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow">
+                          {selectedHistoryOrderIds.length}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-red-950">
+                              {selectedHistoryOrderIds.length === 1
+                                ? "1 pedido tildado para eliminar"
+                                : `${selectedHistoryOrderIds.length} pedidos tildados para eliminar`}
+                            </span>
+                            <span className="text-[11px] font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-full border border-red-200">
+                              Total: {formatGs(
+                                orders
+                                  .filter((o) => selectedHistoryOrderIds.includes(o.id))
+                                  .reduce((acc, o) => acc + (Number(o.totalPrice) || 0), 0)
+                              )}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-red-700 mt-0.5">
+                            Tildá o destildá casillas en la lista para ajustar qué pedidos querés eliminar.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedHistoryOrderIds([])}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-stone-700 border border-stone-300 hover:bg-stone-100 transition shadow-xs"
+                        >
+                          Desmarcar todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleDeleteHistoryPrompt}
+                          className="px-4 py-1.5 rounded-lg text-xs font-black bg-red-600 hover:bg-red-700 text-white shadow transition flex items-center gap-1.5 active:scale-95"
+                        >
+                          <Trash2 size={13} />
+                          <span>Eliminar {selectedHistoryOrderIds.length} tildados</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* BARRA SUPERIOR DE LA TABLA: TILDAR TODOS */}
+                  {filteredHistoryOrders.length > 0 && (
+                    <div className="mb-2.5 flex items-center justify-between gap-2 flex-wrap text-xs px-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleToggleSelectAllHistoryOrders}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-stone-300 bg-white hover:bg-stone-50 font-bold text-stone-700 transition shadow-xs text-xs"
+                          title="Tildar o destildar todos los pedidos visibles en la lista"
+                        >
+                          <CheckSquare size={13} className={selectedHistoryOrderIds.length > 0 ? "text-red-600" : "text-stone-500"} />
+                          <span>
+                            {filteredHistoryOrders.length > 0 && filteredHistoryOrders.every((o) => selectedHistoryOrderIds.includes(o.id))
+                              ? "Destildar todos los visibles"
+                              : `Tildar todos los visibles (${filteredHistoryOrders.length})`}
+                          </span>
+                        </button>
+                        {selectedHistoryOrderIds.length > 0 && (
+                          <span className="text-[11px] font-bold text-red-700">
+                            {selectedHistoryOrderIds.length} de {orders.length} tildado{selectedHistoryOrderIds.length === 1 ? "" : "s"}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[11px] text-stone-500 font-medium hidden sm:inline">
+                        Tip: Marcá la casilla para tildar lo que quieras eliminar.
+                      </span>
+                    </div>
+                  )}
+
                   {filteredHistoryOrders.length === 0 ? (
                     <div className="p-8 text-center rounded-2xl border-2 border-dashed border-stone-200 bg-stone-50 my-2">
                       <History size={40} className="mx-auto text-stone-300 mb-2" />
@@ -8985,6 +9140,17 @@ export default function App() {
                       <table className="w-full text-left text-xs text-stone-800">
                         <thead className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200 text-[10px] uppercase tracking-wider">
                           <tr>
+                            <th className="p-3 w-10 text-center">
+                              <div className="flex items-center justify-center">
+                                <input
+                                  type="checkbox"
+                                  checked={filteredHistoryOrders.length > 0 && filteredHistoryOrders.every((o) => selectedHistoryOrderIds.includes(o.id))}
+                                  onChange={handleToggleSelectAllHistoryOrders}
+                                  className="w-4 h-4 rounded border-stone-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600"
+                                  title="Tildar / Destildar todos los pedidos visibles"
+                                />
+                              </div>
+                            </th>
                             <th className="p-3">Código / Modalidad</th>
                             <th className="p-3">Fecha & Hora</th>
                             <th className="p-3">Cliente / Destino</th>
@@ -9001,9 +9167,30 @@ export default function App() {
                             const isCancelled = (order.paymentStatus || "").toLowerCase() === "cancelado" || (order.paymentStatus || "").toLowerCase() === "anulado";
                             const isMesa = order.mode === "mesa";
                             const isDelivery = order.mode === "delivery";
+                            const isChecked = selectedHistoryOrderIds.includes(order.id);
 
                             return (
-                              <tr key={order.id} className="hover:bg-amber-50/40 transition">
+                              <tr
+                                key={order.id}
+                                className={`transition ${
+                                  isChecked
+                                    ? "bg-red-50/70 hover:bg-red-100/60 ring-1 ring-inset ring-red-200"
+                                    : "hover:bg-amber-50/40"
+                                }`}
+                              >
+                                {/* Casilla para tildar pedido */}
+                                <td className="p-3 align-top text-center">
+                                  <div className="flex items-center justify-center pt-0.5">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => handleToggleSelectHistoryOrder(order.id)}
+                                      className="w-4 h-4 rounded border-stone-300 text-red-600 focus:ring-red-500 cursor-pointer accent-red-600"
+                                      title={`Tildar pedido ${order.id} para eliminar`}
+                                    />
+                                  </div>
+                                </td>
+
                                 {/* Código y Modalidad */}
                                 <td className="p-3 align-top whitespace-nowrap">
                                   <div className="font-mono font-black text-stone-900 text-sm">
@@ -10113,7 +10300,7 @@ export default function App() {
                           type="text"
                           value={staffFormName}
                           onChange={(e) => setStaffFormName(e.target.value)}
-                          placeholder="Ej: Carlos Gómez (Mozo), María (Cocina)..."
+                          placeholder="Ej: Carlos Gómez, Lorena Martínez..."
                           className="w-full p-2.5 text-sm font-bold rounded-xl border-2 border-stone-300 bg-white focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         />
                         <p className="text-[11px] text-stone-500 mt-1">
