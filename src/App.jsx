@@ -10,7 +10,8 @@ import {
   Receipt, DollarSign, Printer, Calendar, CheckSquare, History, Wallet,
   Map, Crosshair, ChevronUp, ChevronDown, ChevronLeft, ChevronRight,
   FileText, Download, MessageCircle, CheckCheck,
-  Bell, BellRing, ChefHat, Volume2, LogOut, UserPlus, Pencil
+  Bell, BellRing, ChefHat, Volume2, LogOut, UserPlus, Pencil,
+  Maximize2, Minimize2
 } from "lucide-react";
 import InstallAppModal from "./components/InstallAppModal.jsx";
 import { OrderTrackingModal } from "./components/OrderTrackingModal.jsx";
@@ -1372,6 +1373,33 @@ export default function App() {
   const [selectedHistoryOrder, setSelectedHistoryOrder] = useState(null); // Detalle del pedido en modal
   const [showHistoryPdfModal, setShowHistoryPdfModal] = useState(false); // Modal para exportar PDF e imprimir reporte contable
   const [selectedHistoryOrderIds, setSelectedHistoryOrderIds] = useState([]); // Pedidos tildados para eliminar del historial
+  const [historyFullscreen, setHistoryFullscreen] = useState(false); // Modo pantalla completa para el historial
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      setHistoryFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
+  }, []);
+
+  const toggleHistoryFullscreen = () => {
+    try {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+    } catch (e) {
+      console.warn("Fullscreen toggle:", e);
+    }
+  };
 
   // Estado para la confirmación automática por WhatsApp de pedidos completados/entregados
   const [whatsAppModalOrder, setWhatsAppModalOrder] = useState(null);
@@ -7549,8 +7577,14 @@ export default function App() {
           <style>{`@import url('https://fonts.googleapis.com/css2?family=Alfa+Slab+One&family=Work+Sans:wght@400;500;600;700;800&display=swap'); .slab{font-family:'Alfa Slab One',serif;}`}</style>
           
           {/* Barra superior de administración */}
-          <div style={{ background: BRAND.charcoal }} className="px-4 py-3.5 sticky top-0 z-30 shadow-md">
-            <div className="max-w-5xl mx-auto flex items-center justify-between">
+          <div style={{ background: BRAND.charcoal }} className="px-3 sm:px-4 py-3.5 sticky top-0 z-30 shadow-md">
+            <div className={`mx-auto flex items-center justify-between transition-all duration-200 ${
+              adminTab === "history"
+                ? "w-full max-w-[98vw] 2xl:max-w-[1850px] px-1 sm:px-4"
+                : adminTab === "orders"
+                ? "w-full max-w-[1720px] px-2 sm:px-4"
+                : "max-w-5xl"
+            }`}>
               <button
                 onClick={() => (dirty ? setShowExitConfirm(true) : setView("menu"))}
                 className="flex items-center gap-1.5 text-xs sm:text-sm font-bold hover:opacity-80 transition py-1.5 px-3 rounded-xl bg-stone-800/80 hover:bg-stone-700 text-stone-200"
@@ -7601,7 +7635,13 @@ export default function App() {
 
           {/* Navegación por pestañas del panel según el rol */}
           <div style={{ background: BRAND.charcoalDark }} className="border-b border-stone-800 overflow-x-auto">
-            <div className="max-w-5xl mx-auto px-4 flex gap-1 sm:gap-2 min-w-max">
+            <div className={`mx-auto px-2 sm:px-4 flex gap-1 sm:gap-2 min-w-max transition-all duration-200 ${
+              adminTab === "history"
+                ? "w-full max-w-[98vw] 2xl:max-w-[1850px]"
+                : adminTab === "orders"
+                ? "w-full max-w-[1720px]"
+                : "max-w-5xl"
+            }`}>
               <button
                 onClick={() => { setAdminTab("orders"); loadOrders(); }}
                 className={`flex items-center gap-2 px-4 sm:px-5 py-3 text-sm font-bold transition border-b-4 ${
@@ -7776,7 +7816,13 @@ export default function App() {
         )}
 
         {/* Contenido de pestañas */}
-        <div className="max-w-5xl mx-auto px-4 py-6">
+        <div className={`mx-auto py-6 transition-all duration-200 ${
+          adminTab === "history"
+            ? "w-full max-w-[98vw] 2xl:max-w-[1850px] px-2 sm:px-4 md:px-6"
+            : adminTab === "orders"
+            ? "w-full max-w-[1720px] px-3 sm:px-6"
+            : "max-w-5xl px-4"
+        }`}>
 
           {/* =============================================================
               PESTAÑA: PANEL DE PEDIDOS Y CONTROL DE COBRO POR CAJA
@@ -8712,6 +8758,15 @@ export default function App() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
+                      onClick={toggleHistoryFullscreen}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition bg-stone-100 hover:bg-stone-200 text-stone-800 shadow-xs"
+                      title={historyFullscreen ? "Salir de pantalla completa" : "Pantalla completa (F11)"}
+                    >
+                      {historyFullscreen ? <Minimize2 size={14} className="text-blue-600" /> : <Maximize2 size={14} className="text-blue-600" />}
+                      <span>{historyFullscreen ? "Salir Pantalla Completa" : "Pantalla Completa"}</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={loadOrders}
                       disabled={loadingOrders}
                       className="px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition bg-stone-100 hover:bg-stone-200 text-stone-800"
@@ -9136,8 +9191,8 @@ export default function App() {
                       </button>
                     </div>
                   ) : (
-                    <div className="overflow-x-auto border border-stone-200 rounded-2xl">
-                      <table className="w-full text-left text-xs text-stone-800">
+                    <div className="overflow-x-auto border border-stone-200 rounded-2xl shadow-xs bg-white">
+                      <table className="w-full min-w-[1040px] text-left text-xs text-stone-800">
                         <thead className="bg-stone-100 text-stone-700 font-bold border-b border-stone-200 text-[10px] uppercase tracking-wider">
                           <tr>
                             <th className="p-3 w-10 text-center">
@@ -9316,12 +9371,12 @@ export default function App() {
 
                                 {/* Acciones */}
                                 <td className="p-3 align-top text-right whitespace-nowrap">
-                                  <div className="flex items-center justify-end gap-1.5">
+                                  <div className="flex items-center justify-end gap-1.5 shrink-0">
                                     {isPending && (
                                       <button
                                         type="button"
                                         onClick={() => setSelectedPayOrder(order)}
-                                        className="px-2.5 py-1 rounded-xl text-xs font-black text-white shadow hover:brightness-105 transition flex items-center gap-1"
+                                        className="px-2.5 py-1 rounded-xl text-xs font-black text-white shadow hover:brightness-105 transition flex items-center gap-1 shrink-0"
                                         style={{ background: BRAND.green }}
                                         title="Cobrar en caja"
                                       >
@@ -9332,7 +9387,7 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => setSelectedHistoryOrder(order)}
-                                      className="px-2.5 py-1 rounded-xl text-xs font-bold border border-stone-300 bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center gap-1"
+                                      className="px-2.5 py-1 rounded-xl text-xs font-bold border border-stone-300 bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center gap-1 shrink-0"
                                       title="Ver detalle completo del ticket"
                                     >
                                       <Eye size={12} />
@@ -9341,7 +9396,7 @@ export default function App() {
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteOrder(order.id)}
-                                      className="p-1.5 rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50 transition border border-transparent hover:border-red-200"
+                                      className="p-1.5 rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50 transition border border-transparent hover:border-red-200 shrink-0"
                                       title="Eliminar pedido"
                                     >
                                       <Trash2 size={13} />
@@ -11827,7 +11882,13 @@ export default function App() {
               <AlertCircle size={14} /> {saveError}
             </p>
           )}
-          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+          <div className={`mx-auto flex items-center justify-between gap-4 transition-all duration-200 ${
+            adminTab === "history"
+              ? "w-full max-w-[98vw] 2xl:max-w-[1850px] px-2 sm:px-4 md:px-6"
+              : adminTab === "orders"
+              ? "w-full max-w-[1720px] px-3 sm:px-6"
+              : "max-w-5xl"
+          }`}>
             <span className="hidden sm:block text-xs font-semibold" style={{ color: BRAND.paper }}>
               {dirty ? "Hay modificaciones listas para publicar" : "Todos los datos están sincronizados"}
             </span>
