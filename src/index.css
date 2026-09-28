@@ -67,3 +67,11 @@ body {
     break-inside: avoid !important;
   }
 }
+
+/* Prevenir estilos y sobrescritura visual por autocompletado en navegadores */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  transition: background-color 50000s ease-in-out 0s, color 50000s ease-in-out 0s;
+}

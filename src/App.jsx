@@ -1331,6 +1331,29 @@ export default function App() {
   const [saveError, setSaveError] = useState("");
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
 
+  // Claves dinámicas y referencias de interacción para anular completamente la pre-escritura y autocompletado del navegador
+  const [loginFormKey, setLoginFormKey] = useState(1);
+  const [regFormKey, setRegFormKey] = useState(1);
+  const userInteractedLoginRef = useRef(false);
+  const userInteractedRegRef = useRef(false);
+
+  // Asegurar que los campos de usuario y contraseña siempre inicien completamente limpios al entrar a la app
+  useEffect(() => {
+    setUserInput("");
+    setPinInput("");
+    setPinError("");
+    setShowLoginPin(false);
+    userInteractedLoginRef.current = false;
+    userInteractedRegRef.current = false;
+    setRegForm((prev) => ({
+      ...prev,
+      requestedUser: "",
+      requestedPassword: "",
+      confirmPassword: "",
+    }));
+    setShowRegPassword(false);
+  }, []);
+
   // Estado del Panel de Pedidos y Cobro por Caja
   const [orders, setOrders] = useState(() => {
     try {
@@ -1729,6 +1752,7 @@ export default function App() {
   const [draftBusiness, setDraftBusiness] = useState(() => (DEFAULT_BUSINESS ? JSON.parse(JSON.stringify(DEFAULT_BUSINESS)) : {}));
   const [draftNewPin, setDraftNewPin] = useState("");
   const [draftPinConfirm, setDraftPinConfirm] = useState("");
+  const [enableChangePin, setEnableChangePin] = useState(false);
   const [showNewPin, setShowNewPin] = useState(false);
   const [showConfirmPin, setShowConfirmPin] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -2650,6 +2674,10 @@ export default function App() {
     setAdminSession(null);
     setAdminRole("owner");
     clearAdminSession();
+    setUserInput("");
+    setPinInput("");
+    setPinError("");
+    setShowLoginPin(false);
     setView("menu");
     addToast("cart_clear", "Sesión Finalizada", "Has salido del panel de administración.");
   };
@@ -2690,12 +2718,97 @@ export default function App() {
     return () => clearInterval(timer);
   }, [ipLocked, ipRemainingSeconds]);
 
-  // Al ingresar a la pantalla de login, verificar si la IP está bloqueada
+  // Al ingresar a la pantalla de login o al panel de adquirir app, limpiar siempre usuario y contraseña (evitar pre-escritura)
   useEffect(() => {
     if (view === "adminLogin") {
+      setUserInput("");
+      setPinInput("");
+      setPinError("");
+      setShowLoginPin(false);
+      userInteractedLoginRef.current = false;
+      setLoginFormKey((k) => k + 1);
       checkIpSecurity();
+      // Limpiezas escalonadas para remover cualquier inyección o autocompletado ("pre-escritura") tardío del navegador
+      const t1 = setTimeout(() => {
+        if (!userInteractedLoginRef.current) {
+          setUserInput("");
+          setPinInput("");
+        }
+      }, 50);
+      const t2 = setTimeout(() => {
+        if (!userInteractedLoginRef.current) {
+          setUserInput("");
+          setPinInput("");
+        }
+      }, 150);
+      const t3 = setTimeout(() => {
+        if (!userInteractedLoginRef.current) {
+          setUserInput("");
+          setPinInput("");
+        }
+      }, 350);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    } else if (view === "register") {
+      userInteractedRegRef.current = false;
+      setRegFormKey((k) => k + 1);
+      setRegForm((prev) => ({
+        ...prev,
+        requestedUser: "",
+        requestedPassword: "",
+        confirmPassword: "",
+      }));
+      setRegError("");
+      setShowRegPassword(false);
+      // Limpiezas escalonadas para el panel de adquirir la app
+      const t1 = setTimeout(() => {
+        if (!userInteractedRegRef.current) {
+          setRegForm((prev) => ({
+            ...prev,
+            requestedUser: "",
+            requestedPassword: "",
+            confirmPassword: "",
+          }));
+        }
+      }, 50);
+      const t2 = setTimeout(() => {
+        if (!userInteractedRegRef.current) {
+          setRegForm((prev) => ({
+            ...prev,
+            requestedUser: "",
+            requestedPassword: "",
+            confirmPassword: "",
+          }));
+        }
+      }, 150);
+      const t3 = setTimeout(() => {
+        if (!userInteractedRegRef.current) {
+          setRegForm((prev) => ({
+            ...prev,
+            requestedUser: "",
+            requestedPassword: "",
+            confirmPassword: "",
+          }));
+        }
+      }, 350);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
     }
   }, [view]);
+
+  // Asegurar que al cambiar de pestaña en el admin o salir del panel, los campos de cambio de PIN queden limpios
+  useEffect(() => {
+    setDraftNewPin("");
+    setDraftPinConfirm("");
+    setEnableChangePin(false);
+    setSaveError("");
+  }, [adminTab, view]);
 
   const resetIpLock = async () => {
     try {
@@ -4233,9 +4346,25 @@ export default function App() {
 
   const saveAllAdminChanges = async () => {
     if (!draft) return false;
-    if (draftNewPin && draftNewPin !== draftPinConfirm) {
-      setSaveError("Las contraseñas de PIN no coinciden.");
-      return false;
+
+    // Solo validar y enviar nueva clave si el usuario activó expresamente el cambio de PIN
+    if (enableChangePin) {
+      const cleanNew = (draftNewPin || "").trim();
+      const cleanConf = (draftPinConfirm || "").trim();
+      if (!cleanNew) {
+        setSaveError("Ingresá la nueva contraseña o PIN que deseás configurar, o desactivá la opción de cambiar PIN.");
+        return false;
+      }
+      if (cleanNew !== cleanConf) {
+        setSaveError("Las contraseñas de PIN no coinciden. Verificá que ambas sean idénticas.");
+        return false;
+      }
+    } else {
+      // Si no se activó la opción de cambio de PIN, asegurar que no se envíe nada aunque el navegador haya autocompletado
+      if (draftNewPin || draftPinConfirm) {
+        setDraftNewPin("");
+        setDraftPinConfirm("");
+      }
     }
 
     // Asegurar que el carrito permanezca cerrado y activar ventana de guardado
@@ -4253,7 +4382,7 @@ export default function App() {
       ...draftBusiness,
       deliveryNote: draftBusiness.deliveryNote || deliveryNote,
       sessionPersistence: draftBusiness.sessionPersistence || sessionPersistence,
-      ...(draftNewPin ? { newPin: draftNewPin } : {}),
+      ...(enableChangePin && draftNewPin.trim() ? { newPin: draftNewPin.trim() } : {}),
     };
 
     const activeUser = (userInput && userInput.trim()) || sessionStorage.getItem("caserita_auth_user") || "gerente";
@@ -4319,19 +4448,18 @@ export default function App() {
       }
       setDeliveryNote(businessPayload.deliveryNote);
       if (draftBusiness.adminUser && draftBusiness.adminUser.trim()) {
-        setUserInput(draftBusiness.adminUser.trim());
         try {
           sessionStorage.setItem("caserita_auth_user", draftBusiness.adminUser.trim());
         } catch (e) {}
       }
-      if (draftNewPin) {
-        setPinInput(draftNewPin);
+      if (enableChangePin && draftNewPin.trim()) {
         try {
-          sessionStorage.setItem("caserita_auth_pin", draftNewPin);
+          sessionStorage.setItem("caserita_auth_pin", draftNewPin.trim());
         } catch (e) {}
-        setDraftNewPin("");
-        setDraftPinConfirm("");
       }
+      setDraftNewPin("");
+      setDraftPinConfirm("");
+      setEnableChangePin(false);
       setDirty(false);
       setSavedFlash(true);
       setShowSaveSuccessModal(true);
@@ -5759,7 +5887,13 @@ export default function App() {
               <div className="w-full flex flex-col sm:flex-row gap-2.5">
                 <button
                   type="button"
-                  onClick={() => setSaveError("")}
+                  onClick={() => {
+                    setSaveError("");
+                    if (!enableChangePin) {
+                      setDraftNewPin("");
+                      setDraftPinConfirm("");
+                    }
+                  }}
                   className="w-full py-2.5 px-4 rounded-xl font-bold text-xs border border-stone-300 text-stone-700 hover:bg-stone-100 transition"
                 >
                   Cerrar
@@ -5768,6 +5902,10 @@ export default function App() {
                   type="button"
                   onClick={() => {
                     setSaveError("");
+                    if (!enableChangePin) {
+                      setDraftNewPin("");
+                      setDraftPinConfirm("");
+                    }
                     saveAllAdminChanges();
                   }}
                   className="w-full py-2.5 px-4 rounded-xl font-bold text-xs text-white shadow transition hover:brightness-105"
@@ -6684,6 +6822,8 @@ export default function App() {
                 setUserInput("");
                 setPinInput("");
                 setPinError("");
+                userInteractedLoginRef.current = false;
+                setLoginFormKey((k) => k + 1);
               }}
               className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 loginMode === "owner"
@@ -6701,6 +6841,8 @@ export default function App() {
                 setUserInput("");
                 setPinInput("");
                 setPinError("");
+                userInteractedLoginRef.current = false;
+                setLoginFormKey((k) => k + 1);
               }}
               className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 loginMode === "staff"
@@ -6718,6 +6860,8 @@ export default function App() {
                 setUserInput("");
                 setPinInput("");
                 setPinError("");
+                userInteractedLoginRef.current = false;
+                setLoginFormKey((k) => k + 1);
               }}
               className={`flex-1 py-2 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
                 loginMode === "superadmin"
@@ -6730,7 +6874,7 @@ export default function App() {
             </button>
           </div>
 
-          <div className="space-y-3">
+          <div key={`auth_box_${loginMode}_${loginFormKey}`} className="space-y-3">
             {loginMode === "staff" ? (
               <div className="space-y-3">
                 <div>
@@ -6738,9 +6882,27 @@ export default function App() {
                     Usuario
                   </label>
                   <input
+                    key={`staff_usr_${loginFormKey}`}
                     type="text"
+                    name={`sec_u_${loginMode}_${loginFormKey}`}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    data-form-type="other"
+                    readOnly
+                    onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                    onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                    onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                    onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                     value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
+                    onChange={(e) => {
+                      userInteractedLoginRef.current = true;
+                      setUserInput(e.target.value);
+                    }}
                     placeholder="Usuario"
                     className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                   />
@@ -6752,11 +6914,28 @@ export default function App() {
                   </label>
                   <div className="relative">
                     <input
+                      key={`staff_pin_${loginFormKey}`}
                       type={showLoginPin ? "text" : "password"}
-                      autoComplete="current-password"
+                      name={`sec_p_${loginMode}_${loginFormKey}`}
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                      readOnly
+                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                      onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                      onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                      onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                       disabled={(ipLocked && loginMode !== "superadmin") || verifying}
                       value={pinInput}
-                      onChange={(e) => setPinInput(e.target.value)}
+                      onChange={(e) => {
+                        userInteractedLoginRef.current = true;
+                        setPinInput(e.target.value);
+                      }}
                       placeholder="Ingresar PIN"
                       className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                     />
@@ -6779,11 +6958,28 @@ export default function App() {
                     {loginMode === "owner" ? "Usuario de Gerencia o Comercio" : "Usuario Administrador Maestro"}
                   </label>
                   <input
+                    key={`admin_usr_${loginFormKey}`}
                     type="text"
-                    autoComplete="username"
+                    name={`sec_u_${loginMode}_${loginFormKey}`}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-bwignore="true"
+                    data-form-type="other"
+                    readOnly
+                    onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                    onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                    onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                    onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                     disabled={(ipLocked && loginMode !== "superadmin") || verifying}
                     value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
+                    onChange={(e) => {
+                      userInteractedLoginRef.current = true;
+                      setUserInput(e.target.value);
+                    }}
                     placeholder="Usuario"
                     className="w-full rounded-xl p-3 text-base border-2 font-medium disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                   />
@@ -6796,11 +6992,28 @@ export default function App() {
                   </label>
                   <div className="relative">
                     <input
+                      key={`admin_pin_${loginFormKey}`}
                       type={showLoginPin ? "text" : "password"}
-                      autoComplete="current-password"
+                      name={`sec_p_${loginMode}_${loginFormKey}`}
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-bwignore="true"
+                      data-form-type="other"
+                      readOnly
+                      onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                      onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                      onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                      onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                       disabled={(ipLocked && loginMode !== "superadmin") || verifying}
                       value={pinInput}
-                      onChange={(e) => setPinInput(e.target.value)}
+                      onChange={(e) => {
+                        userInteractedLoginRef.current = true;
+                        setPinInput(e.target.value);
+                      }}
                       placeholder="Ingresar PIN"
                       className="w-full rounded-xl p-3 pr-12 text-base border-2 tracking-wider font-mono disabled:opacity-60 placeholder:text-stone-400 placeholder:font-normal placeholder:opacity-90 bg-stone-100 border-stone-300 text-stone-900 focus:bg-white"
                     />
@@ -6908,7 +7121,20 @@ export default function App() {
               <div className="mt-6 pt-4 border-t text-center" style={{ borderColor: BRAND.paperDark }}>
                 <p className="text-xs text-stone-600 mb-2">¿Querés una App con pedidos para tu propio negocio?</p>
                 <button
-                  onClick={() => { setView("register"); setRegSuccessVoucher(null); }}
+                  onClick={() => {
+                    setRegForm((prev) => ({
+                      ...prev,
+                      requestedUser: "",
+                      requestedPassword: "",
+                      confirmPassword: "",
+                    }));
+                    setRegError("");
+                    setShowRegPassword(false);
+                    userInteractedRegRef.current = false;
+                    setRegFormKey((k) => k + 1);
+                    setRegSuccessVoucher(null);
+                    setView("register");
+                  }}
                   className="text-xs font-bold px-3 py-1.5 rounded-lg border border-stone-400 hover:bg-stone-200 transition inline-flex items-center gap-1.5"
                   style={{ color: BRAND.charcoal }}
                 >
@@ -6970,7 +7196,15 @@ export default function App() {
               <ArrowLeft size={16} /> Volver a {business.name}
             </button>
             <button
-              onClick={() => setView("adminLogin")}
+              onClick={() => {
+                setUserInput("");
+                setPinInput("");
+                setPinError("");
+                setShowLoginPin(false);
+                userInteractedLoginRef.current = false;
+                setLoginFormKey((k) => k + 1);
+                setView("adminLogin");
+              }}
               className="text-xs font-bold text-stone-300 hover:text-white transition flex items-center gap-1"
             >
               <Lock size={14} /> Ya tengo cuenta (Iniciar sesión)
@@ -7100,7 +7334,7 @@ export default function App() {
                 </p>
               </div>
 
-              <form onSubmit={submitBusinessRegistration} className="space-y-8">
+              <form onSubmit={submitBusinessRegistration} autoComplete="off" data-form-type="other" className="space-y-8">
                 
                 {/* 1. SELECCIÓN DE PLAN Y PRECIOS */}
                 <div>
@@ -7293,14 +7527,32 @@ export default function App() {
                     Definí el usuario y contraseña con el que ingresarás a tu panel privado para gestionar tus platos, precios y portada.
                   </p>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                  <div key={`reg_creds_${regFormKey}`} className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                     <div>
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Usuario Deseado *</label>
                       <input
+                        key={`reg_usr_${regFormKey}`}
                         required
                         type="text"
+                        name={`reg_u_${regFormKey}`}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        data-form-type="other"
+                        readOnly
+                        onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                        onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                        onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                        onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                         value={regForm.requestedUser}
-                        onChange={(e) => setRegForm((prev) => ({ ...prev, requestedUser: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") }))}
+                        onChange={(e) => {
+                          userInteractedRegRef.current = true;
+                          setRegForm((prev) => ({ ...prev, requestedUser: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") }));
+                        }}
                         placeholder="Ej: dinapoli, admin, etc."
                         className="w-full p-3 rounded-xl border text-sm font-mono font-bold"
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
@@ -7312,10 +7564,28 @@ export default function App() {
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Contraseña de Administrador *</label>
                       <div className="relative">
                         <input
+                          key={`reg_pwd_${regFormKey}`}
                           required
                           type={showRegPassword ? "text" : "password"}
+                          name={`reg_p_${regFormKey}`}
+                          autoComplete="new-password"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          data-lpignore="true"
+                          data-1p-ignore="true"
+                          data-bwignore="true"
+                          data-form-type="other"
+                          readOnly
+                          onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                          onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                          onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                          onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                           value={regForm.requestedPassword}
-                          onChange={(e) => setRegForm((prev) => ({ ...prev, requestedPassword: e.target.value }))}
+                          onChange={(e) => {
+                            userInteractedRegRef.current = true;
+                            setRegForm((prev) => ({ ...prev, requestedPassword: e.target.value }));
+                          }}
                           placeholder="Tu contraseña o PIN"
                           className="w-full p-3 pr-10 rounded-xl border text-sm font-mono"
                           style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
@@ -7333,10 +7603,28 @@ export default function App() {
                     <div>
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Confirmar Contraseña *</label>
                       <input
+                        key={`reg_conf_${regFormKey}`}
                         required
                         type={showRegPassword ? "text" : "password"}
+                        name={`reg_c_${regFormKey}`}
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
+                        data-form-type="other"
+                        readOnly
+                        onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                        onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                        onTouchStart={(e) => { e.currentTarget.readOnly = false; }}
+                        onKeyDown={(e) => { e.currentTarget.readOnly = false; }}
                         value={regForm.confirmPassword}
-                        onChange={(e) => setRegForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                        onChange={(e) => {
+                          userInteractedRegRef.current = true;
+                          setRegForm((prev) => ({ ...prev, confirmPassword: e.target.value }));
+                        }}
                         placeholder="Repetir contraseña"
                         className="w-full p-3 rounded-xl border text-sm font-mono"
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
@@ -9806,13 +10094,21 @@ export default function App() {
                       <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>Seguridad (Usuario y Contraseña / PIN)</h3>
                     </div>
                     <p className="text-[11px] text-stone-600 mb-3">
-                      Podés modificar el usuario o la contraseña de acceso para el personal de tu comercio.
+                      Podés modificar el nombre de usuario o activar el cambio de contraseña de acceso de tu comercio.
                     </p>
 
-                    <div className="mb-3 text-xs">
+                    <div className="mb-4 text-xs">
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Usuario Administrador</label>
                       <input
                         type="text"
+                        name="biz_admin_usr_edit"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-lpignore="true"
+                        data-1p-ignore="true"
+                        data-bwignore="true"
                         value={draftBusiness.adminUser || "gerente"}
                         onChange={(e) => {
                           setDraftBusiness((prev) => ({ ...prev, adminUser: e.target.value }));
@@ -9827,54 +10123,116 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-2">
-                      <div>
-                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Nueva Contraseña / PIN (opcional)</label>
-                        <div className="relative">
-                          <input
-                            type={showNewPin ? "text" : "password"}
-                            value={draftNewPin}
-                            onChange={(e) => { setDraftNewPin(e.target.value); setDirty(true); }}
-                            placeholder="Nueva clave"
-                            className="w-full p-2 pr-9 rounded-xl border font-mono text-sm"
-                            style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowNewPin((prev) => !prev)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-stone-800 transition"
-                            title={showNewPin ? "Ocultar clave" : "Ver clave"}
-                          >
-                            {showNewPin ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
+                    {/* Opción para cambiar contraseña con protección anti-autofill */}
+                    <div className="pt-3 border-t" style={{ borderColor: BRAND.paperDark }}>
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-white border border-stone-200">
+                        <div className="flex items-center gap-2.5">
+                          <KeyRound size={17} className={enableChangePin ? "text-amber-600" : "text-stone-400"} />
+                          <div>
+                            <span className="font-bold text-xs text-stone-800 block">
+                              Modificar Contraseña / PIN de Gerencia
+                            </span>
+                            <span className="text-[10px] text-stone-500 block">
+                              {enableChangePin
+                                ? "Ingresá la nueva clave en ambos campos a continuación."
+                                : "Tu contraseña actual se mantiene sin cambios."}
+                            </span>
+                          </div>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !enableChangePin;
+                            setEnableChangePin(next);
+                            setDraftNewPin("");
+                            setDraftPinConfirm("");
+                            setSaveError("");
+                            if (next) setDirty(true);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border shadow-sm ${
+                            enableChangePin
+                              ? "bg-amber-100 border-amber-300 text-amber-900"
+                              : "bg-white border-stone-300 text-stone-700 hover:bg-stone-50"
+                          }`}
+                        >
+                          {enableChangePin ? "Cancelar cambio" : "Cambiar Contraseña"}
+                        </button>
                       </div>
-                      <div>
-                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Confirmar nueva contraseña</label>
-                        <div className="relative">
-                          <input
-                            type={showConfirmPin ? "text" : "password"}
-                            value={draftPinConfirm}
-                            onChange={(e) => { setDraftPinConfirm(e.target.value); setDirty(true); }}
-                            placeholder="Repetir clave"
-                            className="w-full p-2 pr-9 rounded-xl border font-mono text-sm"
-                            style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowConfirmPin((prev) => !prev)}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-stone-800 transition"
-                            title={showConfirmPin ? "Ocultar clave" : "Ver clave"}
-                          >
-                            {showConfirmPin ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
 
-                    <p className="text-[10px] text-stone-500 italic">
-                      * Dejá los campos de contraseña en blanco si no deseás cambiarla. Hacé clic en "Guardar cambios" en la barra inferior para guardar.
-                    </p>
+                      {enableChangePin && (
+                        <div className="mt-3 p-3.5 rounded-xl bg-amber-50/80 border border-amber-300 animate-fadeIn">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-2">
+                            <div>
+                              <label className="font-bold block mb-1 text-stone-800">Nueva Contraseña / PIN *</label>
+                              <div className="relative">
+                                <input
+                                  type={showNewPin ? "text" : "password"}
+                                  name="mgr_new_sec_pwd"
+                                  autoComplete="new-password"
+                                  autoCorrect="off"
+                                  autoCapitalize="none"
+                                  spellCheck={false}
+                                  data-lpignore="true"
+                                  data-1p-ignore="true"
+                                  data-bwignore="true"
+                                  readOnly
+                                  onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                                  onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                                  value={draftNewPin}
+                                  onChange={(e) => { setDraftNewPin(e.target.value); setDirty(true); }}
+                                  placeholder="Nueva clave"
+                                  className="w-full p-2.5 pr-9 rounded-xl border font-mono text-sm bg-white"
+                                  style={{ borderColor: BRAND.paperDark }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNewPin((prev) => !prev)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-stone-800 transition"
+                                  title={showNewPin ? "Ocultar clave" : "Ver clave"}
+                                >
+                                  {showNewPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+                            <div>
+                              <label className="font-bold block mb-1 text-stone-800">Confirmar Nueva Contraseña *</label>
+                              <div className="relative">
+                                <input
+                                  type={showConfirmPin ? "text" : "password"}
+                                  name="mgr_conf_sec_pwd"
+                                  autoComplete="new-password"
+                                  autoCorrect="off"
+                                  autoCapitalize="none"
+                                  spellCheck={false}
+                                  data-lpignore="true"
+                                  data-1p-ignore="true"
+                                  data-bwignore="true"
+                                  readOnly
+                                  onFocus={(e) => { e.currentTarget.readOnly = false; }}
+                                  onPointerDown={(e) => { e.currentTarget.readOnly = false; }}
+                                  value={draftPinConfirm}
+                                  onChange={(e) => { setDraftPinConfirm(e.target.value); setDirty(true); }}
+                                  placeholder="Repetir clave"
+                                  className="w-full p-2.5 pr-9 rounded-xl border font-mono text-sm bg-white"
+                                  style={{ borderColor: BRAND.paperDark }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setShowConfirmPin((prev) => !prev)}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-stone-500 hover:text-stone-800 transition"
+                                  title={showConfirmPin ? "Ocultar clave" : "Ver clave"}
+                                >
+                                  {showConfirmPin ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <span className="text-[10px] text-stone-600 block">
+                            Ambas claves deben coincidir exactamente antes de hacer clic en "Guardar cambios".
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* SELECTOR DE PERSISTENCIA DE SESIÓN DEL GERENTE */}
@@ -12194,6 +12552,8 @@ export default function App() {
                   setPinInput("");
                   setPinError("");
                   setShowLoginPin(false);
+                  userInteractedLoginRef.current = false;
+                  setLoginFormKey((k) => k + 1);
                   setView("adminLogin");
                 }
               }}
@@ -13497,6 +13857,8 @@ export default function App() {
                       setPinInput("");
                       setPinError("");
                       setShowLoginPin(false);
+                      userInteractedLoginRef.current = false;
+                      setLoginFormKey((k) => k + 1);
                       setView("adminLogin");
                     }
                   }}
