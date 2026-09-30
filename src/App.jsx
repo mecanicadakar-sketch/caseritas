@@ -26,6 +26,14 @@ import {
   updateCustomerOrderStatus,
   getSyncChannel,
 } from "./services/notificationService.js";
+import {
+  auth,
+  signInWithGoogle,
+  logOutGoogleUser,
+  onAuthChange,
+  saveUserProfileToFirestore,
+  getUserProfileFromFirestore,
+} from "./services/firebase.js";
 
 /* =========================================================================
    CONFIGURACIÓN Y CONSTANTES
@@ -728,6 +736,14 @@ export default function App() {
   const [deliveryNote, setDeliveryNote] = useState(DEFAULT_BUSINESS.deliveryNote);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [availableStores, setAvailableStores] = useState([]);
+  const [currentStoreId, setCurrentStoreId] = useState(() => {
+    try {
+      return localStorage.getItem("caserita_current_store_id") || "losamigos";
+    } catch {
+      return "losamigos";
+    }
+  });
 
   // Estado y control de Notificaciones Push y Seguimiento Asíncrono de Pedidos
   const [customerOrders, setCustomerOrders] = useState(() => getCustomerOrders());
@@ -1331,6 +1347,125 @@ export default function App() {
   const [saveError, setSaveError] = useState("");
   const [showSaveSuccessModal, setShowSaveSuccessModal] = useState(false);
 
+  // Estados de autenticación con Google
+  const [googleUser, setGoogleUser] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("caserita_google_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    const unsub = onAuthChange((user) => {
+      if (user) {
+        setGoogleUser(user);
+        try { sessionStorage.setItem("caserita_google_user", JSON.stringify(user)); } catch {}
+        if (user.uid) {
+          try { sessionStorage.setItem("caserita_auth_google_uid", user.uid); } catch {}
+        }
+        if (user.profile) {
+          setBusiness((prev) => ({
+            ...prev,
+            name: user.profile.businessName || prev.name,
+            slogan: user.profile.slogan || prev.slogan,
+            bannerImage: user.profile.bannerImage || prev.bannerImage,
+            phoneIntl: user.profile.phoneIntl || prev.phoneIntl,
+            phoneDisplay: user.profile.phoneDisplay || prev.phoneDisplay,
+            address: user.profile.address || prev.address,
+            deliveryNote: user.profile.deliveryNote || prev.deliveryNote,
+          }));
+          setDraftBusiness((prev) => ({
+            ...prev,
+            name: user.profile.businessName || prev.name,
+            slogan: user.profile.slogan || prev.slogan,
+            bannerImage: user.profile.bannerImage || prev.bannerImage,
+            phoneIntl: user.profile.phoneIntl || prev.phoneIntl,
+            phoneDisplay: user.profile.phoneDisplay || prev.phoneDisplay,
+            address: user.profile.address || prev.address,
+            deliveryNote: user.profile.deliveryNote || prev.deliveryNote,
+          }));
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true);
+    setPinError("");
+    try {
+      const res = await signInWithGoogle();
+      if (!res.ok) {
+        if (res.error && !res.error.includes("cerró") && !res.error.includes("cancelada")) {
+          setPinError(res.error);
+        }
+        return;
+      }
+      const gUser = res.user;
+      setGoogleUser(gUser);
+      try {
+        sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
+        sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
+      } catch {}
+
+      // Enviar al backend para vincular o autenticar tienda
+      const resp = await fetch(SHEETS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "googleLogin",
+          email: gUser.email,
+          name: gUser.displayName,
+          uid: gUser.uid,
+          photoURL: gUser.photoURL,
+        }),
+      });
+      const data = await resp.json();
+      if (data.ok) {
+        // Combinar datos del perfil único de Firestore si existen
+        if (gUser.profile && data.business) {
+          data.business = {
+            ...data.business,
+            name: gUser.profile.businessName || data.business.name,
+            slogan: gUser.profile.slogan || data.business.slogan,
+            bannerImage: gUser.profile.bannerImage || data.business.bannerImage,
+            phoneIntl: gUser.profile.phoneIntl || data.business.phoneIntl,
+            phoneDisplay: gUser.profile.phoneDisplay || data.business.phoneDisplay,
+            address: gUser.profile.address || data.business.address,
+            deliveryNote: gUser.profile.deliveryNote || data.business.deliveryNote,
+          };
+        }
+
+        setIpLocked(false);
+        setIpRemainingSeconds(0);
+        setAttemptsLeft(5);
+        fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+        sessionStorage.setItem("caserita_auth_user", gUser.email);
+        sessionStorage.setItem("caserita_auth_pin", "google-auth");
+        sessionStorage.setItem("caserita_auth_role", data.role || "owner");
+        if (data.storeId) {
+          sessionStorage.setItem("caserita_auth_store_id", data.storeId);
+          try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
+        }
+        enterAdmin(data.role || "owner", gUser.email, "google-auth", null, data);
+        addToast(
+          "order_success",
+          `¡Bienvenido, ${gUser.displayName}!`,
+          `Perfil único y configuraciones cargadas con tu cuenta de Google (${gUser.email}).`
+        );
+      } else {
+        setPinError(data.error || "No se pudo acceder con esta cuenta de Google.");
+      }
+    } catch (e) {
+      setPinError("Error de conexión al conectar con Google.");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   // Claves dinámicas y referencias de interacción para anular completamente la pre-escritura y autocompletado del navegador
   const [loginFormKey, setLoginFormKey] = useState(1);
   const [regFormKey, setRegFormKey] = useState(1);
@@ -1781,8 +1916,17 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(SHEETS_API_URL);
+        const savedStore = (() => {
+          try { return localStorage.getItem("caserita_current_store_id") || ""; } catch { return ""; }
+        })();
+        const queryUrl = savedStore ? `${SHEETS_API_URL}?comercio=${encodeURIComponent(savedStore)}` : SHEETS_API_URL;
+        const res = await fetch(queryUrl);
         const data = await res.json();
+        if (data.allStores) setAvailableStores(data.allStores);
+        if (data.storeId) {
+          setCurrentStoreId(data.storeId);
+          try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
+        }
         if (data.menu && data.menu.length > 0) {
           setMenu(data.menu);
           setOpenCat(data.menu[0].category);
@@ -1793,6 +1937,7 @@ export default function App() {
         if (data.business) {
           const bData = { ...data.business };
           setBusiness((prev) => ({ ...prev, ...bData }));
+          setDraftBusiness((prev) => ({ ...prev, ...bData }));
           if (data.business.deliveryNote) setDeliveryNote(data.business.deliveryNote);
           if (bData.licenseCode) {
             setAppLicense((prev) => ({
@@ -1817,6 +1962,35 @@ export default function App() {
       }
     })();
   }, []);
+
+  // Función para alternar comercio público
+  const switchStore = async (storeId) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${SHEETS_API_URL}?comercio=${encodeURIComponent(storeId)}`);
+      const data = await res.json();
+      if (data.storeId) {
+        setCurrentStoreId(data.storeId);
+        try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
+      }
+      if (data.business) {
+        setBusiness(data.business);
+        setDraftBusiness(data.business);
+        if (data.business.deliveryNote) setDeliveryNote(data.business.deliveryNote);
+      }
+      if (data.menu && data.menu.length > 0) {
+        setMenu(data.menu);
+        setDraft(data.menu);
+        setOpenCat(data.menu[0].category);
+      }
+      if (data.allStores) setAvailableStores(data.allStores);
+      addToast("order_update", `Comercio: ${data.business?.name || storeId}`, "Mostrando portada y menú de este comercio.");
+    } catch (e) {
+      console.warn("Error cambiando de comercio:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const allItems = useMemo(() => {
     return (menu || []).flatMap((c) => (Array.isArray(c.items) ? c.items : []));
@@ -2621,7 +2795,7 @@ export default function App() {
     }
   };
 
-  const enterAdmin = (role = "owner", user = "", pin = "", staffMemberData = null) => {
+  const enterAdmin = (role = "owner", user = "", pin = "", staffMemberData = null, storeData = null) => {
     try {
       setAdminRole(role);
       setIpLocked(false);
@@ -2630,11 +2804,35 @@ export default function App() {
       if (user) sessionStorage.setItem("caserita_auth_user", user);
       if (pin) sessionStorage.setItem("caserita_auth_pin", pin);
       sessionStorage.setItem("caserita_auth_role", role);
+      if (storeData?.storeId) {
+        sessionStorage.setItem("caserita_auth_store_id", storeData.storeId);
+        try { localStorage.setItem("caserita_current_store_id", storeData.storeId); } catch {}
+      }
+
+      const activeStoreBusiness = storeData?.business || business || DEFAULT_BUSINESS;
+      const activeStoreMenu = (storeData?.menu && storeData.menu.length > 0)
+        ? storeData.menu
+        : (Array.isArray(menu) && menu.length > 0 ? menu : DEFAULT_MENU);
+
+      if (storeData?.business) {
+        setBusiness(storeData.business);
+      }
+      if (storeData?.menu && storeData.menu.length > 0) {
+        setMenu(storeData.menu);
+        if (storeData.menu[0]?.category) setOpenCat(storeData.menu[0].category);
+      }
+      if (storeData?.license) {
+        setAppLicense((prev) => ({
+          ...prev,
+          ...storeData.license,
+        }));
+      }
 
       const sessionObj = {
         active: true,
         role, // "superadmin" | "owner" | "staff"
-        user: user || (role === "superadmin" ? "Administrador" : role === "staff" ? "Personal" : (business.adminUser || "Gerente")),
+        user: user || (role === "superadmin" ? "Administrador" : role === "staff" ? "Personal" : (activeStoreBusiness.adminUser || "Gerente")),
+        storeId: storeData?.storeId || sessionStorage.getItem("caserita_auth_store_id") || "losamigos",
         staffMember: staffMemberData,
         loggedInAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
@@ -2646,10 +2844,8 @@ export default function App() {
       // Asegurarse de que el servidor no tenga bloqueada la IP
       fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
 
-      const initialMenu = Array.isArray(menu) && menu.length > 0 
-        ? JSON.parse(JSON.stringify(menu)) 
-        : JSON.parse(JSON.stringify(DEFAULT_MENU));
-      const initialBusiness = business ? JSON.parse(JSON.stringify(business)) : DEFAULT_BUSINESS;
+      const initialMenu = JSON.parse(JSON.stringify(activeStoreMenu));
+      const initialBusiness = JSON.parse(JSON.stringify(activeStoreBusiness));
       setDraft(initialMenu);
       setDraftBusiness(initialBusiness);
       setDraftNewPin("");
@@ -2671,6 +2867,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    logOutGoogleUser().catch(() => {});
+    setGoogleUser(null);
+    try { sessionStorage.removeItem("caserita_google_user"); } catch {}
     setAdminSession(null);
     setAdminRole("owner");
     clearAdminSession();
@@ -3023,7 +3222,7 @@ export default function App() {
         setIpRemainingSeconds(0);
         setAttemptsLeft(3);
         fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
-        enterAdmin(detectedRole, cleanUser, cleanPin);
+        enterAdmin(detectedRole, cleanUser, cleanPin, null, result);
       } else {
         if (result.locked) {
           setIpLocked(true);
@@ -3055,10 +3254,12 @@ export default function App() {
   const loadRegisteredClients = async () => {
     setLoadingClients(true);
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: userInput || "Usuario", pin: pinInput || "Ricaji270985#", action: "getRegisteredClients" }),
+        body: JSON.stringify({ user: activeAdminUser, pin: activeAdminPin, action: "getRegisteredClients" }),
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.clients)) {
@@ -3074,12 +3275,14 @@ export default function App() {
   // Actualizar estado de comercio (activo, pendiente, vencido)
   const updateClientStatus = async (clientId, newStatus) => {
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
           action: "updateClientStatus",
           clientId,
           status: newStatus,
@@ -3090,6 +3293,25 @@ export default function App() {
         setRegisteredClients((prev) =>
           prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
         );
+        if (newStatus === "activo") {
+          addToast(
+            "order_success",
+            "¡Comercio Habilitado con Éxito!",
+            "El comercio ya está activo. Su usuario y contraseña pueden ingresar inmediatamente para gestionar su portada y menú."
+          );
+        } else if (newStatus === "rechazado") {
+          addToast(
+            "order_cancel",
+            "Comercio Rechazado",
+            "El comercio ha sido marcado como rechazado."
+          );
+        } else {
+          addToast(
+            "order_update",
+            "Estado Modificado",
+            "El comercio ha sido colocado en estado pendiente."
+          );
+        }
       }
     } catch (err) {
       console.warn("Error actualizando estado del cliente:", err);
@@ -3099,19 +3321,21 @@ export default function App() {
   // Eliminar registro de comercio
   const deleteRegisteredClient = async (clientId) => {
     setRegisteredClients((prev) => prev.filter((c) => c.id !== clientId));
-    addToast({
-      type: "info",
-      title: "Registro eliminado",
-      message: "La solicitud de compra fue retirada del panel.",
-    });
+    addToast(
+      "cart_clear",
+      "Registro Eliminado",
+      "La solicitud de compra y su perfil fueron retirados del panel."
+    );
 
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
           action: "deleteRegisteredClient",
           clientId,
         }),
@@ -4385,8 +4609,9 @@ export default function App() {
       ...(enableChangePin && draftNewPin.trim() ? { newPin: draftNewPin.trim() } : {}),
     };
 
-    const activeUser = (userInput && userInput.trim()) || sessionStorage.getItem("caserita_auth_user") || "gerente";
-    const activePin = (pinInput && pinInput.trim()) || sessionStorage.getItem("caserita_auth_pin") || "comercio123";
+    const activeUser = sessionStorage.getItem("caserita_auth_user") || (userInput && userInput.trim()) || draftBusiness.adminUser || business.adminUser || "gerente";
+    const activePin = sessionStorage.getItem("caserita_auth_pin") || (pinInput && pinInput.trim()) || "comercio123";
+    const activeStoreId = sessionStorage.getItem("caserita_auth_store_id") || activeUser;
 
     try {
       let res = await fetch(SHEETS_API_URL, {
@@ -4395,6 +4620,7 @@ export default function App() {
         body: JSON.stringify({
           user: activeUser,
           pin: activePin,
+          storeId: activeStoreId,
           menu: sanitizedMenu,
           deliveryNote: businessPayload.deliveryNote,
           business: businessPayload,
@@ -4411,6 +4637,7 @@ export default function App() {
           body: JSON.stringify({
             user: activeUser,
             pin: activePin,
+            storeId: activeStoreId,
             menu: sanitizedMenu,
             deliveryNote: businessPayload.deliveryNote,
             business: businessPayload,
@@ -4439,7 +4666,41 @@ export default function App() {
       }
 
       setMenu(sanitizedMenu);
-      setBusiness(businessPayload);
+      setBusiness(result.business || businessPayload);
+      if (result.storeId) {
+        sessionStorage.setItem("caserita_auth_store_id", result.storeId);
+        try { localStorage.setItem("caserita_current_store_id", result.storeId); } catch {}
+      }
+      try {
+        localStorage.setItem(`caserita_store_${result.storeId || activeStoreId}`, JSON.stringify({
+          business: result.business || businessPayload,
+          menu: sanitizedMenu,
+          updatedAt: new Date().toISOString()
+        }));
+      } catch (e) {}
+
+      // Sincronizar en base de datos Firestore por UID autenticado de usuario
+      try {
+        const firestoreUid = auth.currentUser?.uid || sessionStorage.getItem("caserita_auth_google_uid");
+        if (firestoreUid) {
+          saveUserProfileToFirestore(firestoreUid, {
+            uid: firestoreUid,
+            email: auth.currentUser?.email || googleUser?.email || "",
+            displayName: auth.currentUser?.displayName || googleUser?.displayName || businessPayload.name || "",
+            photoURL: auth.currentUser?.photoURL || googleUser?.photoURL || "",
+            role: adminRole || "owner",
+            businessName: businessPayload.name,
+            slogan: businessPayload.slogan,
+            bannerImage: businessPayload.bannerImage,
+            phoneIntl: businessPayload.phoneIntl,
+            phoneDisplay: businessPayload.phoneDisplay,
+            address: businessPayload.address,
+            deliveryNote: businessPayload.deliveryNote,
+            storeId: result.storeId || activeStoreId,
+          }).catch((fsErr) => console.warn("Aviso Firestore perfil:", fsErr));
+        }
+      } catch (e) {}
+
       if (businessPayload.sessionPersistence) {
         setSessionPersistence(businessPayload.sessionPersistence);
         try {
@@ -4469,7 +4730,7 @@ export default function App() {
       addToast(
         "order_success",
         "¡Datos Guardados con Éxito!",
-        "Los cambios del comercio, menú y credenciales fueron guardados en el servidor."
+        `Los cambios de ${businessPayload.name || "tu comercio"}, portada y menú fueron guardados en el servidor.`
       );
       setCartOpen(false);
       return true;
@@ -6805,6 +7066,53 @@ export default function App() {
             >
               Pedir en Carta
             </button>
+          </div>
+
+          {/* Opción Nivel 2: Acceso Rápido con Cuenta de Google */}
+          <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-stone-300 shadow-md">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-black text-stone-900 flex items-center gap-1.5">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>Acceder con tu Email de Google</span>
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                1 Clic
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-600 mb-3 leading-snug">
+              Ingresá directamente vinculando tu cuenta de correo Gmail sin necesidad de recordar PIN o contraseñas.
+            </p>
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              disabled={googleLoading}
+              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-white border-2 border-stone-300 hover:border-amber-500 hover:bg-amber-50/50 text-stone-800 shadow-sm hover:shadow flex items-center justify-center gap-2.5 transition active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+            >
+              {googleLoading ? (
+                <><LoaderCircle className="animate-spin text-amber-600" size={17} /> Conectando con Google...</>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>Continuar con Google</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="relative flex py-2 items-center mb-2">
+            <div className="flex-grow border-t border-stone-300"></div>
+            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-stone-500 tracking-wider">o ingresar con usuario y PIN</span>
+            <div className="flex-grow border-t border-stone-300"></div>
           </div>
 
           <div className="mb-2">
@@ -12359,9 +12667,11 @@ export default function App() {
               <Phone size={13} color={BRAND.green} /> WhatsApp: <b className="text-white">{business.phoneDisplay}</b>
             </span>
           </div>
-          <span className="text-[11px] text-stone-400 font-medium">
-            Delivery y retiro en el local
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-stone-400 font-medium">
+              Delivery y retiro en el local
+            </span>
+          </div>
         </div>
       </div>
 
@@ -12406,6 +12716,16 @@ export default function App() {
               }`}>
                 {adminRole === "superadmin" ? "👑 Administrador General" : adminRole === "staff" ? (adminSession?.user ? `👨‍🍳 ${adminSession.user}` : "👨‍🍳 Personal Operativo") : "👔 Modo Gerente Activo"}
               </span>
+              {googleUser && (
+                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-white text-stone-900 shadow-sm border border-stone-300">
+                  {googleUser.photoURL ? (
+                    <img src={googleUser.photoURL} alt="" className="w-3.5 h-3.5 rounded-full" />
+                  ) : (
+                    <span className="w-3 h-3 rounded-full bg-blue-500 text-[9px] text-white flex items-center justify-center font-bold">G</span>
+                  )}
+                  <span className="truncate max-w-[130px] sm:max-w-[180px]">{googleUser.email}</span>
+                </span>
+              )}
               <span className="text-stone-300 text-[11px] font-medium hidden sm:inline">
                 {adminRole === "staff"
                   ? `Tomando comandas en salón (${adminSession?.user || "Mozo"}) • Autorizado por Gerencia`
