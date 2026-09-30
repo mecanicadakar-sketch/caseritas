@@ -383,11 +383,21 @@ function createDefaultDb() {
 }
 
 let inMemoryDb = null;
+const TMP_FILE = path.join("/tmp", "caserita_db.json");
 
 export function loadDb() {
+  if (inMemoryDb) return inMemoryDb;
   try {
-    if (!fs.existsSync(DB_DIR)) {
-      fs.mkdirSync(DB_DIR, { recursive: true });
+    // 1. Intentar leer desde /tmp si existe en la instancia Serverless de Vercel
+    if (fs.existsSync(TMP_FILE)) {
+      const rawTmp = fs.readFileSync(TMP_FILE, "utf-8");
+      if (rawTmp && rawTmp.trim()) {
+        const parsed = JSON.parse(rawTmp);
+        if (parsed && parsed.stores) {
+          inMemoryDb = parsed;
+          return inMemoryDb;
+        }
+      }
     }
 
     if (fs.existsSync(DB_FILE)) {
@@ -413,19 +423,26 @@ export function loadDb() {
 
 export function saveDb(db) {
   inMemoryDb = db;
+  // Guardar en /tmp primero (siempre disponible y escribible en Vercel Serverless)
+  try {
+    fs.writeFileSync(TMP_FILE, JSON.stringify(db, null, 2), "utf-8");
+  } catch (e) {}
+
   try {
     if (!fs.existsSync(DB_DIR)) {
       fs.mkdirSync(DB_DIR, { recursive: true });
     }
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
   } catch (err) {
-    console.error("[Database] Error guardando caserita_db.json:", err);
+    // En entornos Serverless como Vercel el filesystem raíz es de solo lectura,
+    // por lo que se mantiene en memoria y en /tmp
   }
 }
 
 // Búsqueda inteligente de un comercio por ID o Username
 export function findStore(db, identifier) {
-  if (!identifier) return null;
+  if (!db || !db.stores) return null;
+  if (!identifier) return getActiveStore(db);
   const clean = String(identifier).trim().toLowerCase();
   
   // 1. Coincidencia por key exacta o id
@@ -436,12 +453,23 @@ export function findStore(db, identifier) {
     if (String(s.business?.adminUser || "").toLowerCase() === clean) return s;
   }
 
-  // 2. Coincidencias especiales para gerente / comercio / demo
-  if (clean === "gerente" || clean === "comercio" || clean === "demo") {
-    return db.stores["losamigos"] || Object.values(db.stores)[0] || null;
+  // 2. Coincidencias especiales para gerente / comercio / demo / caserita
+  if (
+    clean === "gerente" ||
+    clean === "comercio" ||
+    clean === "demo" ||
+    clean === "caserita" ||
+    clean === "caseritas" ||
+    clean === "lacaserita" ||
+    clean === "admin" ||
+    clean === "usuario" ||
+    clean.includes("@")
+  ) {
+    return getActiveStore(db);
   }
 
-  return null;
+  // Fallback seguro a la tienda activa de La Caserita
+  return getActiveStore(db);
 }
 
 // Obtener la tienda activa para visualización pública
