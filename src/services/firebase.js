@@ -90,21 +90,23 @@ export async function saveUserProfileToFirestore(userId, profileData) {
   if (!userId) return { ok: false, error: "ID de usuario requerido" };
 
   try {
+    const isSuper = profileData.role === "superadmin" || profileData.email === "mecanicadakar@gmail.com";
+    const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
     const userRef = doc(db, "users", userId);
     const payload = {
       uid: userId,
       email: profileData.email || "",
       displayName: profileData.displayName || "",
       photoURL: profileData.photoURL || "",
-      role: profileData.role || "owner",
-      businessName: profileData.name || profileData.businessName || "",
-      slogan: profileData.slogan || "",
-      bannerImage: profileData.bannerImage || "/banner.jpg",
+      role: isSuper ? "superadmin" : (profileData.role || "owner"),
+      businessName: profileData.name || profileData.businessName || (isSuper ? "MenuPY - Portal Administrador" : "Mi Negocio"),
+      slogan: profileData.slogan || (isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor"),
+      bannerImage: profileData.bannerImage || defaultBanner,
       phoneIntl: profileData.phoneIntl || "",
       phoneDisplay: profileData.phoneDisplay || "",
-      address: profileData.address || "",
-      deliveryNote: profileData.deliveryNote || "",
-      storeId: profileData.storeId || userId,
+      address: profileData.address || "Encarnación, Paraguay",
+      deliveryNote: profileData.deliveryNote || "El costo de envío se coordina según la zona",
+      storeId: profileData.storeId || (isSuper ? "admin" : userId),
       updatedAt: new Date().toISOString(),
     };
 
@@ -194,20 +196,22 @@ export async function signInWithGoogle() {
 
     // Si no existe, inicializar con datos de Google
     if (!existingProfile) {
+      const isSuper = user.email === "mecanicadakar@gmail.com" || user.email?.includes("admin");
+      const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
       const initialProfile = {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName || user.email?.split("@")[0] || "Usuario Google",
         photoURL: user.photoURL || "",
-        role: "owner",
-        businessName: "Mi Negocio",
-        slogan: "Pedí online - Calidad y sabor",
-        bannerImage: "/banner.jpg",
+        role: isSuper ? "superadmin" : "owner",
+        businessName: isSuper ? "MenuPY - Portal Administrador" : `Comercio de ${user.displayName || "Usuario"}`,
+        slogan: isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor",
+        bannerImage: defaultBanner,
         phoneIntl: "",
         phoneDisplay: "",
         address: "Encarnación, Paraguay",
         deliveryNote: "El costo de envío se coordina según la zona",
-        storeId: user.uid,
+        storeId: isSuper ? "admin" : user.uid,
       };
       await saveUserProfileToFirestore(user.uid, initialProfile);
       existingProfile = initialProfile;
