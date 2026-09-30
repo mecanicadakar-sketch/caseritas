@@ -107,7 +107,13 @@ let cachedSqlClient = undefined;
 
 function getSqlClient() {
   if (cachedSqlClient !== undefined) return cachedSqlClient;
-  const rawUrl = process.env.DATABASE_URL ? process.env.DATABASE_URL.trim() : "";
+  const rawUrl = (
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.caseritas_POSTGRES_URL ||
+    process.env.caseritas_URL_DE_LA_BASE_DE_DATOS ||
+    ""
+  ).trim();
   if (!isValidPostgresUrl(rawUrl)) {
     cachedSqlClient = null;
     return null;
