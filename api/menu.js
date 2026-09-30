@@ -174,7 +174,8 @@ export default async function handler(req, res) {
       requestedStoreId = parsedUrl.searchParams.get("comercio") || parsedUrl.searchParams.get("store") || parsedUrl.searchParams.get("c");
     } catch {}
 
-    const store = getActiveStore(db, requestedStoreId);
+    const isExplicitDemo = url.includes("action=getDemoStore") || (!requestedStoreId);
+    const store = isExplicitDemo ? getActiveStore(db) : (findStore(db, requestedStoreId) || getActiveStore(db));
     if (!store) {
       return sendJson(res, 404, { error: "No hay comercios configurados" });
     }
@@ -191,11 +192,18 @@ export default async function handler(req, res) {
         city: s.business.city || s.city,
       }));
 
+    // Si es la tienda demo, asegurar que la imagen fija sea la del admin o la del portal demo
+    const businessToReturn = { ...store.business };
+    if (store.id === "losamigos" || isExplicitDemo) {
+      businessToReturn.bannerImage = db.stores["admin"]?.business?.bannerImage || store.business?.bannerImage || "/Flyers-MenuPY.png";
+    }
+
     return sendJson(res, 200, {
+      isDemo: Boolean(isExplicitDemo),
       storeId: store.id,
       menu: store.menu || [],
       deliveryNote: store.business.deliveryNote || "El costo de envío se coordina según la zona",
-      business: store.business,
+      business: businessToReturn,
       allStores: allActiveStores,
     });
   }
@@ -460,11 +468,42 @@ export default async function handler(req, res) {
           email.includes("admin") ||
           email.includes("camuchi");
 
+        if (isMasterGoogle) {
+          const adminStore = findStore(db, "admin");
+          return sendJson(res, 200, {
+            ok: true,
+            role: "superadmin",
+            clientIp,
+            email,
+            displayName: name || "Administrador Maestro",
+            photoURL,
+            uid,
+            storeId: "admin",
+            user: "usuario",
+            business: {
+              ...(adminStore?.business || {}),
+              name: "MenuPY - Portal Administrador",
+              slogan: "Llevá tu negocio al siguiente nivel - Menús digitales",
+              bannerImage: "/Flyers-MenuPY.png",
+              adminUser: "usuario",
+              isPortalAdmin: true,
+            },
+            menu: adminStore?.menu || [],
+            orders: Object.values(db.stores).flatMap((s) => s.orders || []),
+            license: {
+              code: "CAS-ADMIN-MASTER",
+              plan: "Plan Administrador Maestro",
+              status: "activado",
+            },
+          });
+        }
+
         // 2. Buscar si este email pertenece a algún comercio existente
         let associatedStore = null;
         for (const s of Object.values(db.stores)) {
           if (
             (s.email && s.email.toLowerCase() === email) ||
+            (s.ownerEmail && s.ownerEmail.toLowerCase() === email) ||
             (s.business?.email && s.business.email.toLowerCase() === email) ||
             (s.business?.ownerEmail && s.business.ownerEmail.toLowerCase() === email)
           ) {
@@ -483,17 +522,51 @@ export default async function handler(req, res) {
           }
         }
 
-        // Si aún no está vinculado a una tienda específica, usar la tienda activa principal
+        // Si es un usuario nuevo, crearle su propia tienda aislada con sus propios datos e imágenes
         if (!associatedStore) {
-          associatedStore = getActiveStore(db);
-        }
+          const userSlug = (email.split("@")[0] || "user").replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+          const uniqueStoreId = `store_${userSlug}`;
 
-        const role = isMasterGoogle ? "superadmin" : "owner";
-
-        if (associatedStore) {
-          db.activeStoreId = associatedStore.id;
+          associatedStore = db.stores[uniqueStoreId] || {
+            id: uniqueStoreId,
+            username: userSlug,
+            email: email,
+            ownerEmail: email,
+            pin: "1234",
+            status: "activo",
+            business: {
+              name: name ? `Comercio de ${name}` : `Comercio ${userSlug}`,
+              slogan: "Pedí online - Calidad y sabor",
+              phoneIntl: "595981456789",
+              phoneDisplay: "0981 123 456",
+              address: "Encarnación, Paraguay",
+              bannerImage: "/banner.jpg",
+              deliveryNote: "El costo de envío se coordina según la zona",
+              adminUser: userSlug,
+              ownerEmail: email,
+            },
+            menu: [
+              {
+                category: "Especialidades de la Casa",
+                icon: "almuerzo",
+                items: [
+                  {
+                    id: `item-${Date.now()}-1`,
+                    name: "Plato Especial",
+                    desc: "Especialidad artesanal de la casa, porción abundante",
+                    price: 25000,
+                    image: "",
+                  },
+                ],
+              },
+            ],
+            orders: [],
+          };
+          db.stores[uniqueStoreId] = associatedStore;
           saveDb(db);
         }
+
+        const role = "owner";
 
         return sendJson(res, 200, {
           ok: true,
@@ -503,11 +576,11 @@ export default async function handler(req, res) {
           displayName: name,
           photoURL,
           uid,
-          storeId: associatedStore ? associatedStore.id : "losamigos",
-          user: associatedStore ? associatedStore.username : email.split("@")[0],
-          business: associatedStore ? associatedStore.business : null,
-          menu: associatedStore ? (associatedStore.menu || []) : [],
-          orders: associatedStore ? (associatedStore.orders || []) : [],
+          storeId: associatedStore.id,
+          user: associatedStore.username,
+          business: associatedStore.business,
+          menu: associatedStore.menu || [],
+          orders: associatedStore.orders || [],
           license: associatedStore?.business?.licenseCode ? {
             code: associatedStore.business.licenseCode,
             plan: associatedStore.business.licensePlan,
@@ -631,17 +704,26 @@ export default async function handler(req, res) {
       // -------------------------------------------------------------
       if (body.action === "verifyPin") {
         if (isSuperadmin) {
+          const adminStore = findStore(db, "admin");
           return sendJson(res, 200, {
             ok: true,
             role: "superadmin",
             clientIp,
             user: "Usuario",
+            storeId: "admin",
+            business: {
+              ...(adminStore?.business || {}),
+              name: "MenuPY - Portal Administrador",
+              bannerImage: "/Flyers-MenuPY.png",
+              adminUser: "usuario",
+              isPortalAdmin: true,
+            },
+            menu: adminStore?.menu || [],
+            orders: Object.values(db.stores).flatMap((s) => s.orders || []),
           });
         }
 
         if (matchedStore) {
-          db.activeStoreId = matchedStore.id;
-          saveDb(db);
           return sendJson(res, 200, {
             ok: true,
             role: "owner",
@@ -938,10 +1020,20 @@ export default async function handler(req, res) {
       // GUARDAR CAMBIOS: Portada, Datos del Comercio, Precios y Menú
       // CADA USUARIO GUARDA SU PROPIO BANNER, TELÉFONOS Y MENÚ
       // =============================================================
+      const isSuperAdminSaving = Boolean(
+        body.role === "superadmin" ||
+        body.user === "usuario" ||
+        body.user === "admin" ||
+        body.storeId === "admin" ||
+        (body.user && String(body.user).toLowerCase() === "mecanicadakar@gmail.com")
+      );
+
       let targetStore = null;
 
       // 1. Determinar cuál comercio se está modificando
-      if (body.storeId) {
+      if (isSuperAdminSaving) {
+        targetStore = findStore(db, "admin");
+      } else if (body.storeId) {
         targetStore = findStore(db, body.storeId);
       }
       if (!targetStore && matchedStore) {
@@ -966,7 +1058,15 @@ export default async function handler(req, res) {
         if (b.phoneIntl !== undefined) targetStore.business.phoneIntl = b.phoneIntl;
         if (b.phoneDisplay !== undefined) targetStore.business.phoneDisplay = b.phoneDisplay;
         if (b.address !== undefined) targetStore.business.address = b.address;
-        if (b.bannerImage !== undefined) targetStore.business.bannerImage = b.bannerImage;
+        if (b.bannerImage !== undefined) {
+          targetStore.business.bannerImage = b.bannerImage;
+          // Si el usuario Administrador guarda la portada, fijar esta imagen en el portal demo
+          // cumpliendo el requerimiento: "con usuario administrador quede fijo esta imagen"
+          if (isSuperAdminSaving) {
+            if (db.stores["admin"]) db.stores["admin"].business.bannerImage = b.bannerImage;
+            if (db.stores["losamigos"]) db.stores["losamigos"].business.bannerImage = b.bannerImage;
+          }
+        }
         if (b.deliveryNote !== undefined) targetStore.business.deliveryNote = b.deliveryNote;
         
         // Cambio de credenciales de este comercio
@@ -990,8 +1090,7 @@ export default async function handler(req, res) {
         targetStore.menu = body.menu;
       }
 
-      // Marcar tienda como la última activa
-      db.activeStoreId = targetStore.id;
+      // Guardar en la base de datos persistente (manteniendo la tienda demo "losamigos" limpia para visitantes)
       saveDb(db);
 
       return sendJson(res, 200, {

@@ -179,9 +179,10 @@ function createDefaultDb() {
           phoneIntl: "595981456789",
           phoneDisplay: "0981 123 456",
           address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
-          bannerImage: "/banner.jpg",
+          bannerImage: "/Flyers-MenuPY.png",
           deliveryNote: "El costo de envío se coordina según la zona",
           adminUser: "losamigos",
+          isDemoStore: true,
           licenseCode: "CAS-7K9B-X2M4",
           licensePlan: "Plan Anual PRO (1 Año)",
           licenseCost: "1.350.000 Gs. / año",
@@ -445,46 +446,80 @@ export function findStore(db, identifier) {
   if (!identifier) return getActiveStore(db);
   const clean = String(identifier).trim().toLowerCase();
   
-  // 1. Coincidencia por key exacta o id
+  // 1. Superadmin / Usuario Administrador Maestro
+  if (clean === "usuario" || clean === "admin" || clean === "superadmin") {
+    if (!db.stores["admin"]) {
+      db.stores["admin"] = {
+        id: "admin",
+        username: "usuario",
+        pin: "Ricaji270985#",
+        status: "activo",
+        business: {
+          name: "MenuPY - Portal Administrador",
+          slogan: "Llevá tu negocio al siguiente nivel - Menús digitales",
+          phoneIntl: "595981456789",
+          phoneDisplay: "0981 123 456",
+          address: "Encarnación, Paraguay",
+          bannerImage: "/Flyers-MenuPY.png",
+          deliveryNote: "Plataforma oficial de menús digitales",
+          adminUser: "usuario",
+          isPortalAdmin: true,
+        },
+        menu: [],
+        orders: [],
+      };
+    }
+    return db.stores["admin"];
+  }
+
+  // 2. Coincidencia por key exacta o id
   if (db.stores[clean]) return db.stores[clean];
   for (const s of Object.values(db.stores)) {
     if (String(s.id).toLowerCase() === clean) return s;
-    if (String(s.username).toLowerCase() === clean) return s;
+    if (String(s.username || "").toLowerCase() === clean) return s;
     if (String(s.business?.adminUser || "").toLowerCase() === clean) return s;
+    if (String(s.ownerEmail || "").toLowerCase() === clean) return s;
   }
 
-  // 2. Coincidencias especiales para gerente / comercio / demo / caserita
-  if (
-    clean === "gerente" ||
-    clean === "comercio" ||
-    clean === "demo" ||
-    clean === "caserita" ||
-    clean === "caseritas" ||
-    clean === "lacaserita" ||
-    clean === "admin" ||
-    clean === "usuario" ||
-    clean.includes("@")
-  ) {
-    return getActiveStore(db);
+  // 3. Coincidencias para tiendas de demostración / iniciales
+  if (clean === "losamigos" || clean === "gerente" || clean === "comercio" || clean === "demo" || clean === "caserita") {
+    return db.stores["losamigos"] || Object.values(db.stores)[0] || null;
   }
 
-  // Fallback seguro a la tienda activa de La Caserita
-  return getActiveStore(db);
+  // 4. Si es un usuario o email nuevo, crearle su propia tienda aislada para NO sobreescribir la de otros comercios
+  const safeStoreId = clean.replace(/[^a-z0-9_-]/g, "_");
+  if (db.stores[safeStoreId]) return db.stores[safeStoreId];
+
+  db.stores[safeStoreId] = {
+    id: safeStoreId,
+    username: clean,
+    pin: "1234",
+    status: "activo",
+    business: {
+      name: clean.includes("@") ? `Comercio ${clean.split("@")[0]}` : `Comercio ${clean}`,
+      slogan: "Pedí online - Calidad y sabor",
+      phoneIntl: "595981456789",
+      phoneDisplay: "0981 123 456",
+      address: "Encarnación, Paraguay",
+      bannerImage: "/banner.jpg",
+      deliveryNote: "El costo de envío se coordina según la zona",
+      adminUser: clean,
+    },
+    menu: [],
+    orders: [],
+  };
+  saveDb(db);
+  return db.stores[safeStoreId];
 }
 
-// Obtener la tienda activa para visualización pública
+// Obtener la tienda activa para visualización pública (Modo Demo limpio por defecto si no hay comercio específico en la URL)
 export function getActiveStore(db, requestedId) {
   if (requestedId) {
     const requested = findStore(db, requestedId);
     if (requested) return requested;
   }
 
-  if (db.activeStoreId) {
-    const active = findStore(db, db.activeStoreId);
-    if (active) return active;
-  }
-
-  const stores = Object.values(db.stores);
-  const activeOne = stores.find((s) => s.status === "activo");
-  return activeOne || stores[0] || null;
+  // Devolver siempre la tienda oficial de demostración limpia ("losamigos")
+  // con la imagen fija del portal, evitando fugas de comercios registrados
+  return db.stores["losamigos"] || db.stores["demo"] || Object.values(db.stores)[0] || null;
 }
