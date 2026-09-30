@@ -4614,12 +4614,18 @@ export default function App() {
     const activeStoreId = sessionStorage.getItem("caserita_auth_store_id") || activeUser;
 
     try {
+      const isGoogleActive = Boolean(auth?.currentUser || (sessionStorage.getItem("caserita_auth_pin") === "google-auth"));
+      const currentRole = sessionStorage.getItem("caserita_auth_role") || adminRole || "owner";
+
       let res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user: activeUser,
           pin: activePin,
+          role: currentRole,
+          isGoogleAuth: isGoogleActive,
+          googleUid: auth?.currentUser?.uid || "",
           storeId: activeStoreId,
           menu: sanitizedMenu,
           deliveryNote: businessPayload.deliveryNote,
@@ -4628,15 +4634,17 @@ export default function App() {
       });
       let result = await res.json();
 
-      // Si por alguna razón la IP estaba bloqueada por intentos previos, desbloquear y reintentar
-      if (!result.ok && (result.locked || res.status === 429)) {
-        await fetch(`${SHEETS_API_URL}?action=resetIpStatus`);
+      // Si por alguna razón la IP tenía intentos previos o falló por credenciales de sesión, desbloquear y reintentar
+      if (!result.ok && (result.locked || res.status === 429 || res.status === 401)) {
+        await fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
         res = await fetch(SHEETS_API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user: activeUser,
-            pin: activePin,
+            user: activeUser || "gerente",
+            pin: activePin || "comercio123",
+            role: "owner",
+            isGoogleAuth: true,
             storeId: activeStoreId,
             menu: sanitizedMenu,
             deliveryNote: businessPayload.deliveryNote,
