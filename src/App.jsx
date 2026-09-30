@@ -327,7 +327,7 @@ const DEFAULT_BUSINESS = {
   phoneIntl: "595981456789",
   phoneDisplay: "0981 123 456",
   address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
-  bannerImage: "/banner.jpg",
+  bannerImage: "/Flyers-MenuPY.png",
   deliveryNote: "El costo de envío se coordina según la zona",
   adminUser: "gerente",
   sessionPersistence: "keep_active", // "keep_active" | "close_on_exit"
@@ -737,13 +737,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [availableStores, setAvailableStores] = useState([]);
-  const [currentStoreId, setCurrentStoreId] = useState(() => {
-    try {
-      return localStorage.getItem("caserita_current_store_id") || "losamigos";
-    } catch {
-      return "losamigos";
-    }
-  });
+  const [currentStoreId, setCurrentStoreId] = useState("losamigos");
 
   // Estado y control de Notificaciones Push y Seguimiento Asíncrono de Pedidos
   const [customerOrders, setCustomerOrders] = useState(() => getCustomerOrders());
@@ -1359,34 +1353,34 @@ export default function App() {
   const [googleLoading, setGoogleLoading] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthChange((user) => {
+    const unsub = onAuthChange(async (user) => {
       if (user) {
         setGoogleUser(user);
         try { sessionStorage.setItem("caserita_google_user", JSON.stringify(user)); } catch {}
         if (user.uid) {
           try { sessionStorage.setItem("caserita_auth_google_uid", user.uid); } catch {}
-        }
-        if (user.profile) {
-          setBusiness((prev) => ({
-            ...prev,
-            name: user.profile.businessName || prev.name,
-            slogan: user.profile.slogan || prev.slogan,
-            bannerImage: user.profile.bannerImage || prev.bannerImage,
-            phoneIntl: user.profile.phoneIntl || prev.phoneIntl,
-            phoneDisplay: user.profile.phoneDisplay || prev.phoneDisplay,
-            address: user.profile.address || prev.address,
-            deliveryNote: user.profile.deliveryNote || prev.deliveryNote,
-          }));
-          setDraftBusiness((prev) => ({
-            ...prev,
-            name: user.profile.businessName || prev.name,
-            slogan: user.profile.slogan || prev.slogan,
-            bannerImage: user.profile.bannerImage || prev.bannerImage,
-            phoneIntl: user.profile.phoneIntl || prev.phoneIntl,
-            phoneDisplay: user.profile.phoneDisplay || prev.phoneDisplay,
-            address: user.profile.address || prev.address,
-            deliveryNote: user.profile.deliveryNote || prev.deliveryNote,
-          }));
+          try {
+            const profile = await getUserProfileFromFirestore(user.uid);
+            if (profile) {
+              const isSuper = user.email === "mecanicadakar@gmail.com" || user.email?.includes("admin");
+              const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
+              const userBanner = profile.bannerImage || defaultBanner;
+              const loadedUserBiz = {
+                name: profile.businessName || (isSuper ? "MenuPY - Portal Administrador" : `Comercio de ${user.displayName || user.email}`),
+                slogan: profile.slogan || (isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor"),
+                bannerImage: userBanner,
+                phoneIntl: profile.phoneIntl || "",
+                phoneDisplay: profile.phoneDisplay || "",
+                address: profile.address || "Encarnación, Paraguay",
+                deliveryNote: profile.deliveryNote || "El costo de envío se coordina según la zona",
+                adminUser: user.email,
+              };
+              setBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
+              setDraftBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
+            }
+          } catch (e) {
+            console.warn("No se pudo cargar perfil individual de Firestore:", e);
+          }
         }
       }
     });
@@ -1425,17 +1419,20 @@ export default function App() {
       });
       const data = await resp.json();
       if (data.ok) {
+        const isSuper = data.role === "superadmin" || gUser.email === "mecanicadakar@gmail.com";
+        const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
+
         // Combinar datos del perfil único de Firestore si existen
-        if (gUser.profile && data.business) {
+        if (data.business) {
           data.business = {
             ...data.business,
-            name: gUser.profile.businessName || data.business.name,
-            slogan: gUser.profile.slogan || data.business.slogan,
-            bannerImage: gUser.profile.bannerImage || data.business.bannerImage,
-            phoneIntl: gUser.profile.phoneIntl || data.business.phoneIntl,
-            phoneDisplay: gUser.profile.phoneDisplay || data.business.phoneDisplay,
-            address: gUser.profile.address || data.business.address,
-            deliveryNote: gUser.profile.deliveryNote || data.business.deliveryNote,
+            name: gUser.profile?.businessName || data.business.name,
+            slogan: gUser.profile?.slogan || data.business.slogan,
+            bannerImage: gUser.profile?.bannerImage || data.business.bannerImage || defaultBanner,
+            phoneIntl: gUser.profile?.phoneIntl || data.business.phoneIntl,
+            phoneDisplay: gUser.profile?.phoneDisplay || data.business.phoneDisplay,
+            address: gUser.profile?.address || data.business.address,
+            deliveryNote: gUser.profile?.deliveryNote || data.business.deliveryNote,
           };
         }
 
@@ -1448,7 +1445,6 @@ export default function App() {
         sessionStorage.setItem("caserita_auth_role", data.role || "owner");
         if (data.storeId) {
           sessionStorage.setItem("caserita_auth_store_id", data.storeId);
-          try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
         }
         enterAdmin(data.role || "owner", gUser.email, "google-auth", null, data);
         addToast(
@@ -1916,16 +1912,22 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const savedStore = (() => {
-          try { return localStorage.getItem("caserita_current_store_id") || ""; } catch { return ""; }
-        })();
-        const queryUrl = savedStore ? `${SHEETS_API_URL}?comercio=${encodeURIComponent(savedStore)}` : SHEETS_API_URL;
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlStore = urlParams.get("comercio") || urlParams.get("store") || urlParams.get("c");
+        const activeAuthStore = sessionStorage.getItem("caserita_auth_store_id");
+        
+        let queryUrl = `${SHEETS_API_URL}?action=getDemoStore`;
+        if (urlStore) {
+          queryUrl = `${SHEETS_API_URL}?comercio=${encodeURIComponent(urlStore)}`;
+        } else if (activeAuthStore) {
+          queryUrl = `${SHEETS_API_URL}?comercio=${encodeURIComponent(activeAuthStore)}`;
+        }
+
         const res = await fetch(queryUrl);
         const data = await res.json();
         if (data.allStores) setAvailableStores(data.allStores);
         if (data.storeId) {
           setCurrentStoreId(data.storeId);
-          try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
         }
         if (data.menu && data.menu.length > 0) {
           setMenu(data.menu);
@@ -1971,7 +1973,6 @@ export default function App() {
       const data = await res.json();
       if (data.storeId) {
         setCurrentStoreId(data.storeId);
-        try { localStorage.setItem("caserita_current_store_id", data.storeId); } catch {}
       }
       if (data.business) {
         setBusiness(data.business);
@@ -2728,10 +2729,14 @@ export default function App() {
     try {
       localStorage.removeItem("lacaserita_admin_session");
       localStorage.removeItem("lacaserita_admin_session_backup");
+      localStorage.removeItem("caserita_current_store_id");
       sessionStorage.removeItem("lacaserita_session_active");
       sessionStorage.removeItem("caserita_auth_user");
       sessionStorage.removeItem("caserita_auth_pin");
       sessionStorage.removeItem("caserita_auth_role");
+      sessionStorage.removeItem("caserita_auth_store_id");
+      sessionStorage.removeItem("caserita_google_user");
+      sessionStorage.removeItem("caserita_auth_google_uid");
     } catch (e) {}
   };
 
@@ -2806,21 +2811,47 @@ export default function App() {
       sessionStorage.setItem("caserita_auth_role", role);
       if (storeData?.storeId) {
         sessionStorage.setItem("caserita_auth_store_id", storeData.storeId);
-        try { localStorage.setItem("caserita_current_store_id", storeData.storeId); } catch {}
       }
 
-      const activeStoreBusiness = storeData?.business || business || DEFAULT_BUSINESS;
+      let activeStoreBusiness;
+      if (role === "superadmin") {
+        activeStoreBusiness = {
+          name: "MenuPY - Portal Administrador",
+          slogan: "Llevá tu negocio al siguiente nivel - Menús digitales",
+          phoneIntl: "595981456789",
+          phoneDisplay: "0981 123 456",
+          address: "Encarnación, Paraguay",
+          bannerImage: storeData?.business?.bannerImage || "/Flyers-MenuPY.png",
+          deliveryNote: "Plataforma oficial de menús digitales",
+          adminUser: "usuario",
+          isPortalAdmin: true,
+        };
+      } else if (storeData?.business) {
+        activeStoreBusiness = {
+          ...DEFAULT_BUSINESS,
+          ...storeData.business,
+          bannerImage: storeData.business.bannerImage || "/banner.jpg",
+        };
+      } else {
+        activeStoreBusiness = {
+          ...DEFAULT_BUSINESS,
+          name: user ? `Comercio ${user}` : "Mi Comercio",
+          bannerImage: "/banner.jpg",
+          adminUser: user || "gerente",
+        };
+      }
+
+      setBusiness(activeStoreBusiness);
+      setDraftBusiness(activeStoreBusiness);
+
       const activeStoreMenu = (storeData?.menu && storeData.menu.length > 0)
         ? storeData.menu
-        : (Array.isArray(menu) && menu.length > 0 ? menu : DEFAULT_MENU);
+        : (role === "superadmin" ? [] : DEFAULT_MENU);
 
-      if (storeData?.business) {
-        setBusiness(storeData.business);
-      }
-      if (storeData?.menu && storeData.menu.length > 0) {
-        setMenu(storeData.menu);
-        if (storeData.menu[0]?.category) setOpenCat(storeData.menu[0].category);
-      }
+      setMenu(activeStoreMenu);
+      setDraft(activeStoreMenu);
+      if (activeStoreMenu[0]?.category) setOpenCat(activeStoreMenu[0].category);
+
       if (storeData?.license) {
         setAppLicense((prev) => ({
           ...prev,
@@ -2844,10 +2875,6 @@ export default function App() {
       // Asegurarse de que el servidor no tenga bloqueada la IP
       fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
 
-      const initialMenu = JSON.parse(JSON.stringify(activeStoreMenu));
-      const initialBusiness = JSON.parse(JSON.stringify(activeStoreBusiness));
-      setDraft(initialMenu);
-      setDraftBusiness(initialBusiness);
       setDraftNewPin("");
       setDraftPinConfirm("");
       setDirty(false);
@@ -2869,16 +2896,46 @@ export default function App() {
   const handleLogout = () => {
     logOutGoogleUser().catch(() => {});
     setGoogleUser(null);
-    try { sessionStorage.removeItem("caserita_google_user"); } catch {}
     setAdminSession(null);
     setAdminRole("owner");
     clearAdminSession();
+    try {
+      localStorage.removeItem("caserita_current_store_id");
+      localStorage.removeItem("lacaserita_admin_session");
+      localStorage.removeItem("lacaserita_admin_session_backup");
+      sessionStorage.clear();
+    } catch {}
     setUserInput("");
     setPinInput("");
     setPinError("");
     setShowLoginPin(false);
+    setBusiness(DEFAULT_BUSINESS);
+    setDraftBusiness(DEFAULT_BUSINESS);
+    setMenu(DEFAULT_MENU);
+    setDraft(DEFAULT_MENU);
+    setCurrentStoreId("losamigos");
     setView("menu");
-    addToast("cart_clear", "Sesión Finalizada", "Has salido del panel de administración.");
+
+    // Recargar la tienda demo oficial desde el servidor para dejar el portal 100% limpio
+    fetch(`${SHEETS_API_URL}?action=getDemoStore`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.business) {
+          setBusiness((prev) => ({ ...prev, ...data.business }));
+          setDraftBusiness((prev) => ({ ...prev, ...data.business }));
+        }
+        if (data?.menu && data.menu.length > 0) {
+          setMenu(data.menu);
+          setDraft(data.menu);
+        }
+      })
+      .catch(() => {});
+
+    addToast(
+      "cart_clear",
+      "Modo Demostración Activo",
+      "Has cerrado sesión. La app volvió a modo demo limpio y lista para el próximo usuario."
+    );
   };
 
   // Verificar estado de seguridad de la IP del cliente
@@ -4677,7 +4734,6 @@ export default function App() {
       setBusiness(result.business || businessPayload);
       if (result.storeId) {
         sessionStorage.setItem("caserita_auth_store_id", result.storeId);
-        try { localStorage.setItem("caserita_current_store_id", result.storeId); } catch {}
       }
       try {
         localStorage.setItem(`caserita_store_${result.storeId || activeStoreId}`, JSON.stringify({
@@ -8401,7 +8457,8 @@ export default function App() {
                   Guardar cambios y salir
                 </button>
                 <button
-                  onClick={() => { setShowExitConfirm(false); setView("menu"); }}
+                  type="button"
+                  onClick={() => { setShowExitConfirm(false); handleLogout(); }}
                   className="w-full rounded-xl p-3 text-sm font-bold transition hover:brightness-105"
                   style={{ background: BRAND.tomato, color: BRAND.cream }}
                 >
@@ -12689,7 +12746,7 @@ export default function App() {
         <div 
           className="absolute inset-0 pointer-events-none opacity-30 blur-2xl scale-110"
           style={{
-            backgroundImage: `url(${business.bannerImage || "/banner.jpg"})`,
+            backgroundImage: `url(${business.bannerImage || "/Flyers-MenuPY.png"})`,
             backgroundPosition: 'center',
             backgroundSize: 'cover',
           }}
@@ -12701,10 +12758,10 @@ export default function App() {
         <div className="relative z-10 w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl flex items-center justify-center md:px-6 md:py-3">
           <div className="relative w-full flex items-center justify-center overflow-hidden md:rounded-2xl md:shadow-2xl md:border md:border-amber-500/20 bg-stone-950/80">
             <img 
-              src={business.bannerImage || "/banner.jpg"} 
+              src={business.bannerImage || "/Flyers-MenuPY.png"} 
               alt={business.name || "La Caserita"} 
               className="w-full h-auto max-h-[380px] sm:max-h-[460px] object-contain block mx-auto transition-all"
-              onError={(e) => { e.currentTarget.src = "/banner.jpg"; }} 
+              onError={(e) => { e.currentTarget.src = "/Flyers-MenuPY.png"; }} 
             />
           </div>
         </div>
