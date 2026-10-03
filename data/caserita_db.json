@@ -4,27 +4,30 @@
   "stores": {
     "losamigos": {
       "id": "losamigos",
-      "username": "losamigos",
+      "username": "menupy",
       "pin": "comercio123",
       "status": "activo",
       "business": {
-        "name": "Rotisería Los Amigos",
-        "slogan": "Pedí online - Comidas caseras y minutas",
+        "name": "Menu Py",
+        "slogan": "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
         "phoneIntl": "595981456789",
         "phoneDisplay": "0981 123 456",
-        "address": "Santa María III, Ruta 6ta km 3.5, Encarnación",
-        "bannerImage": "/banner.jpg",
+        "address": "Encarnación, Paraguay",
+        "bannerImage": "/Flyers-MenuPY.png",
         "deliveryNote": "El costo de envío se coordina según la zona",
-        "adminUser": "losamigos",
+        "adminUser": "menupy",
         "licenseCode": "CAS-7K9B-X2M4",
         "licensePlan": "Plan Anual PRO (1 Año)",
-        "licenseCost": "1.350.000 Gs. / año",
-        "licenseCostGs": 1350000,
+        "licenseCost": "1.000.000 Gs. / año",
+        "licenseCostGs": 1000000,
         "licenseDuration": "12 meses",
         "licenseStatus": "activado",
         "licenseActivatedAt": "2026-03-01T12:00:00.000Z",
         "licenseExpiresAt": "2027-03-01T12:00:00.000Z",
-        "licenseNotes": "Licencia Anual con soporte y actualización oficial"
+        "licenseNotes": "Licencia Anual con soporte y actualización oficial",
+        "rubro": "Carta Digital & Gastronomía",
+        "city": "Encarnación",
+        "schedule": "Lun a Dom: 11:00 a 15:00 y 19:30 a 23:30"
       },
       "menu": [
         {
@@ -50,6 +53,33 @@
               "name": "Tallarines Caseros con Estofado",
               "desc": "Pasta fresca artesanal con salsa de estofado de carne",
               "price": 28000,
+              "image": ""
+            }
+          ]
+        },
+        {
+          "category": "Minutas y Hamburguesas",
+          "icon": "hamburguesa",
+          "items": [
+            {
+              "id": "alm4",
+              "name": "Lomito Completo",
+              "desc": "Carne tierna, lechuga, tomate, jamón, queso y huevo frito",
+              "price": 28000,
+              "image": ""
+            },
+            {
+              "id": "alm5",
+              "name": "Empanadas Caseras (Docena)",
+              "desc": "Carne cortada a cuchillo, jamón y queso, o pollo",
+              "price": 36000,
+              "image": ""
+            },
+            {
+              "id": "bh1",
+              "name": "Burger Artesanal Doble Carne",
+              "desc": "Doble medallón de 150g, queso cheddar fundido y papas",
+              "price": 32000,
               "image": ""
             }
           ]
@@ -97,13 +127,6 @@
               "name": "Tarta Dulce Artesanal",
               "desc": "Porción de tarta de frutilla o pasta frola",
               "price": 15000,
-              "image": ""
-            },
-            {
-              "id": "pos3",
-              "name": "Ensalada de Frutas Frescas",
-              "desc": "Frutas de estación picadas en jugo natural",
-              "price": 10000,
               "image": ""
             }
           ]
@@ -325,8 +348,8 @@
         "city": "",
         "licenseCode": "CAS-9658-Z9XP",
         "licensePlan": "Plan Anual PRO (Ahorrá 3 meses)",
-        "licenseCost": "1.350.000 Gs.",
-        "licenseCostGs": 1350000,
+        "licenseCost": "1.000.000 Gs.",
+        "licenseCostGs": 1000000,
         "licenseDuration": "12 meses",
         "licenseStatus": "activado",
         "licenseActivatedAt": "2026-09-29T10:50:31.924Z",
@@ -362,6 +385,259 @@
         }
       ],
       "orders": []
+    },
+    "store_mirthamabeltrinidad": {
+      "id": "store_mirthamabeltrinidad",
+      "username": "mirthamabeltrinidad",
+      "email": "mirthamabeltrinidad@gmail.com",
+      "ownerEmail": "mirthamabeltrinidad@gmail.com",
+      "pin": "1234",
+      "status": "activo",
+      "business": {
+        "name": "Comercio de mirtha mabel",
+        "slogan": "Pedí online - Calidad y sabor",
+        "phoneIntl": "595981456789",
+        "phoneDisplay": "0981 123 456",
+        "address": "Encarnación, Paraguay",
+        "bannerImage": "/banner.jpg",
+        "deliveryNote": "El costo de envío se coordina según la zona",
+        "adminUser": "mirthamabeltrinidad",
+        "ownerEmail": "mirthamabeltrinidad@gmail.com"
+      },
+      "menu": [
+        {
+          "category": "Especialidades de la Casa",
+          "icon": "almuerzo",
+          "items": [
+            {
+              "id": "item-1790850662194-1",
+              "name": "Plato Especial",
+              "desc": "Especialidad artesanal de la casa, porción abundante",
+              "price": 25000,
+              "image": ""
+            }
+          ]
+        }
+      ],
+      "orders": []
+    },
+    "mecanicadakar_gmail_com": {
+      "id": "mecanicadakar_gmail_com",
+      "username": "mecanicadakar@gmail.com",
+      "pin": "1234",
+      "status": "activo",
+      "business": {
+        "name": "Comercio mecanicadakar",
+        "slogan": "Pedí online - Calidad y sabor",
+        "phoneIntl": "595981456789",
+        "phoneDisplay": "0981 123 456",
+        "address": "Encarnación, Paraguay",
+        "bannerImage": "/banner.jpg",
+        "deliveryNote": "El costo de envío se coordina según la zona",
+        "adminUser": "mecanicadakar@gmail.com"
+      },
+      "menu": [],
+      "orders": []
+    },
+    "menupy": {
+      "id": "menupy",
+      "username": "menupy",
+      "pin": "comercio123",
+      "status": "activo",
+      "business": {
+        "name": "Menu Py",
+        "slogan": "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
+        "phoneIntl": "595981456789",
+        "phoneDisplay": "0981 123 456",
+        "address": "Encarnación, Paraguay",
+        "bannerImage": "/Flyers-MenuPY.png",
+        "deliveryNote": "El costo de envío se coordina según la zona",
+        "adminUser": "menupy",
+        "licenseCode": "CAS-7K9B-X2M4",
+        "licensePlan": "Plan Anual PRO (1 Año)",
+        "licenseCost": "1.000.000 Gs. / año",
+        "licenseCostGs": 1000000,
+        "licenseDuration": "12 meses",
+        "licenseStatus": "activado",
+        "licenseActivatedAt": "2026-03-01T12:00:00.000Z",
+        "licenseExpiresAt": "2027-03-01T12:00:00.000Z",
+        "licenseNotes": "Licencia Anual con soporte y actualización oficial",
+        "rubro": "Carta Digital & Gastronomía",
+        "city": "Encarnación",
+        "schedule": "Lun a Dom: 11:00 a 15:00 y 19:30 a 23:30"
+      },
+      "menu": [
+        {
+          "category": "Platos Principales",
+          "icon": "almuerzo",
+          "items": [
+            {
+              "id": "alm1",
+              "name": "Menú del día",
+              "desc": "Plato completo nutritivo, incluye guarnición del día",
+              "price": 25000,
+              "image": ""
+            },
+            {
+              "id": "alm2",
+              "name": "Milanesa de Carne con Guarnición",
+              "desc": "Acompañada de papas fritas crocantes o ensalada mixta",
+              "price": 30000,
+              "image": ""
+            },
+            {
+              "id": "alm3",
+              "name": "Tallarines Caseros con Estofado",
+              "desc": "Pasta fresca artesanal con salsa de estofado de carne",
+              "price": 28000,
+              "image": ""
+            }
+          ]
+        },
+        {
+          "category": "Minutas y Hamburguesas",
+          "icon": "hamburguesa",
+          "items": [
+            {
+              "id": "alm4",
+              "name": "Lomito Completo",
+              "desc": "Carne tierna, lechuga, tomate, jamón, queso y huevo frito",
+              "price": 28000,
+              "image": ""
+            },
+            {
+              "id": "alm5",
+              "name": "Empanadas Caseras (Docena)",
+              "desc": "Carne cortada a cuchillo, jamón y queso, o pollo",
+              "price": 36000,
+              "image": ""
+            },
+            {
+              "id": "bh1",
+              "name": "Burger Artesanal Doble Carne",
+              "desc": "Doble medallón de 150g, queso cheddar fundido y papas",
+              "price": 32000,
+              "image": ""
+            }
+          ]
+        },
+        {
+          "category": "Bebidas",
+          "icon": "bebida",
+          "items": [
+            {
+              "id": "beb1",
+              "name": "Gaseosa 500ml",
+              "desc": "Coca-Cola, Sprite o Fanta (bien fría)",
+              "price": 8000,
+              "image": ""
+            },
+            {
+              "id": "beb2",
+              "name": "Jugo Natural Exprimido 500ml",
+              "desc": "Naranja exprimida fresca o frutas de estación",
+              "price": 12000,
+              "image": ""
+            },
+            {
+              "id": "beb3",
+              "name": "Agua Mineral 500ml",
+              "desc": "Con o sin gas, purificada",
+              "price": 5000,
+              "image": ""
+            }
+          ]
+        },
+        {
+          "category": "Postres",
+          "icon": "postre",
+          "items": [
+            {
+              "id": "pos1",
+              "name": "Flan Casero con Dulce de Leche",
+              "desc": "Receta tradicional casera con caramelo dorado",
+              "price": 12000,
+              "image": ""
+            },
+            {
+              "id": "pos2",
+              "name": "Tarta Dulce Artesanal",
+              "desc": "Porción de tarta de frutilla o pasta frola",
+              "price": 15000,
+              "image": ""
+            }
+          ]
+        }
+      ],
+      "orders": [
+        {
+          "id": "PED-1577",
+          "mode": "mesa",
+          "tableNumber": "3",
+          "customerName": "Juan",
+          "customerPhone": "0981778899",
+          "address": "Mesa 3 (Salón Principal)",
+          "notes": "Pedido pasado a cocina",
+          "items": [
+            {
+              "id": "alm2",
+              "name": "Milanesa de Carne con Guarnición",
+              "price": 30000,
+              "qty": 1
+            },
+            {
+              "id": "beb1",
+              "name": "Gaseosa 500ml",
+              "price": 7000,
+              "qty": 1
+            },
+            {
+              "id": "pos1",
+              "name": "Flan Casero con Dulce de Leche",
+              "price": 12000,
+              "qty": 1
+            }
+          ],
+          "totalItems": 3,
+          "totalPrice": 49000,
+          "orderStatus": "en_preparacion",
+          "deliveryStatus": "local",
+          "paymentStatus": "pendiente",
+          "paymentMethod": "",
+          "paidAt": null,
+          "createdAt": "2026-09-29T10:33:01.568Z",
+          "updatedAt": "2026-09-29T10:43:01.568Z"
+        },
+        {
+          "id": "PED-1001",
+          "mode": "mesa",
+          "tableNumber": "4",
+          "customerName": "Cliente en Salón",
+          "customerPhone": "",
+          "address": "",
+          "notes": "Sin hielo en la bebida",
+          "items": [
+            {
+              "id": "alm1",
+              "name": "Menú del día",
+              "price": 25000,
+              "qty": 2
+            },
+            {
+              "id": "beb1",
+              "name": "Gaseosa 500ml",
+              "price": 7000,
+              "qty": 2
+            }
+          ],
+          "totalItems": 4,
+          "totalPrice": 64000,
+          "paymentStatus": "pendiente",
+          "paymentMethod": "",
+          "paidAt": null,
+          "createdAt": "2026-09-29T10:23:01.568Z"
+        }
+      ]
     }
   },
   "commercialRegistrations": [
@@ -377,7 +653,7 @@
       "requestedPassword": "pizzapassword",
       "plan": "anual",
       "planTitle": "Plan Anual PRO (Ahorrá 3 meses)",
-      "amountGs": 1350000,
+      "amountGs": 1000000,
       "paymentMethod": "transferencia",
       "paymentRef": "",
       "status": "activo",
@@ -385,17 +661,17 @@
     },
     {
       "id": "REG-2026-101",
-      "businessName": "Rotisería Los Amigos",
+      "businessName": "Menu Py",
       "rubro": "Rotisería y Minutas",
       "ownerName": "Carlos González",
       "whatsapp": "595981456789",
-      "email": "losamigos@gmail.com",
+      "email": "menupy@gmail.com",
       "city": "Encarnación",
-      "requestedUser": "losamigos",
+      "requestedUser": "menupy",
       "requestedPassword": "comercio123",
       "plan": "anual",
       "planTitle": "Plan Anual PRO (Ahorrá 3 meses)",
-      "amountGs": 1350000,
+      "amountGs": 1000000,
       "paymentMethod": "transferencia",
       "paymentRef": "SIPAP #49821 Banco Continental",
       "status": "activo",
@@ -428,8 +704,8 @@
       "ownerName": "Luis Rojas",
       "whatsapp": "0981112233",
       "plan": "Plan Anual PRO (Ahorrá 3 meses)",
-      "costFormatted": "1.350.000 Gs.",
-      "costGs": 1350000,
+      "costFormatted": "1.000.000 Gs.",
+      "costGs": 1000000,
       "durationMonths": 12,
       "status": "activado",
       "createdAt": "2026-09-29T10:50:31.924Z",
@@ -441,18 +717,18 @@
     {
       "id": "ACT-101",
       "code": "CAS-7K9B-X2M4",
-      "businessName": "Rotisería Los Amigos",
+      "businessName": "Menu Py",
       "ownerName": "Carlos González",
       "whatsapp": "595981456789",
       "plan": "Plan Anual PRO (1 Año)",
-      "costFormatted": "1.350.000 Gs. / año",
-      "costGs": 1350000,
+      "costFormatted": "1.000.000 Gs. / año",
+      "costGs": 1000000,
       "durationMonths": 12,
       "status": "activado",
       "createdAt": "2026-08-30T10:48:01.569Z",
       "activatedAt": "2026-09-09T10:48:01.569Z",
       "expiresAt": "2027-09-09T10:48:01.569Z",
-      "activatedBy": "Carlos González (Rotisería Los Amigos)",
+      "activatedBy": "Carlos González (Menu Py)",
       "notes": "Licencia Anual con soporte y actualización oficial"
     },
     {
