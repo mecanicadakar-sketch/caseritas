@@ -170,23 +170,26 @@ function createDefaultDb() {
     stores: {
       "losamigos": {
         id: "losamigos",
-        username: "losamigos",
+        username: "menupy",
         pin: "comercio123",
         status: "activo",
         business: {
-          name: "Rotisería Los Amigos",
-          slogan: "Pedí online - Comidas caseras y minutas",
+          name: "Menu Py",
+          slogan: "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
           phoneIntl: "595981456789",
           phoneDisplay: "0981 123 456",
-          address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
+          address: "Encarnación, Paraguay",
           bannerImage: "/Flyers-MenuPY.png",
           deliveryNote: "El costo de envío se coordina según la zona",
-          adminUser: "losamigos",
+          rubro: "Carta Digital & Gastronomía",
+          city: "Encarnación",
+          schedule: "Lun a Dom: 11:00 a 15:00 y 19:30 a 23:30",
+          adminUser: "menupy",
           isDemoStore: true,
           licenseCode: "CAS-7K9B-X2M4",
           licensePlan: "Plan Anual PRO (1 Año)",
-          licenseCost: "1.350.000 Gs. / año",
-          licenseCostGs: 1350000,
+          licenseCost: "1.000.000 Gs. / año",
+          licenseCostGs: 1000000,
           licenseDuration: "12 meses",
           licenseStatus: "activado",
           licenseActivatedAt: "2026-03-01T12:00:00.000Z",
@@ -292,17 +295,17 @@ function createDefaultDb() {
     commercialRegistrations: [
       {
         id: "REG-2026-101",
-        businessName: "Rotisería Los Amigos",
-        rubro: "Rotisería y Minutas",
+        businessName: "Menu Py (Demo Oficial)",
+        rubro: "Carta Digital & Gastronomía",
         ownerName: "Carlos González",
         whatsapp: "595981456789",
-        email: "losamigos@gmail.com",
+        email: "menupy@gmail.com",
         city: "Encarnación",
-        requestedUser: "losamigos",
+        requestedUser: "menupy",
         requestedPassword: "comercio123",
         plan: "anual",
-        planTitle: "Plan Anual PRO (Ahorrá 3 meses)",
-        amountGs: 1350000,
+        planTitle: "Plan Anual PRO (Ahorrá 2 meses)",
+        amountGs: 1000000,
         paymentMethod: "transferencia",
         paymentRef: "SIPAP #49821 Banco Continental",
         status: "activo",
@@ -331,18 +334,19 @@ function createDefaultDb() {
       {
         id: "ACT-101",
         code: "CAS-7K9B-X2M4",
-        businessName: "Rotisería Los Amigos",
+        businessName: "Menu Py (Demo Oficial)",
         ownerName: "Carlos González",
+        email: "menupy@gmail.com",
         whatsapp: "595981456789",
         plan: "Plan Anual PRO (1 Año)",
-        costFormatted: "1.350.000 Gs. / año",
-        costGs: 1350000,
+        costFormatted: "1.000.000 Gs. / año",
+        costGs: 1000000,
         durationMonths: 12,
         status: "activado",
         createdAt: new Date(Date.now() - 3600000 * 24 * 30).toISOString(),
         activatedAt: new Date(Date.now() - 3600000 * 24 * 20).toISOString(),
         expiresAt: new Date(Date.now() + 3600000 * 24 * 345).toISOString(),
-        activatedBy: "Carlos González (Rotisería Los Amigos)",
+        activatedBy: "Carlos González (Menu Py)",
         notes: "Licencia Anual con soporte y actualización oficial",
       },
       {
@@ -350,6 +354,7 @@ function createDefaultDb() {
         code: "CAS-4821-M8KP",
         businessName: "Burger House Enc",
         ownerName: "Marcos Giménez",
+        email: "marcos@burgerhouse.py",
         whatsapp: "595975123456",
         plan: "Plan Mensual",
         costFormatted: "150.000 Gs. / mes",
@@ -482,34 +487,11 @@ export function findStore(db, identifier) {
   }
 
   // 3. Coincidencias para tiendas de demostración / iniciales
-  if (clean === "losamigos" || clean === "gerente" || clean === "comercio" || clean === "demo" || clean === "caserita") {
-    return db.stores["losamigos"] || Object.values(db.stores)[0] || null;
+  if (clean === "menupy" || clean === "menu_py" || clean === "menu-py" || clean === "losamigos" || clean === "gerente" || clean === "comercio" || clean === "demo" || clean === "caserita") {
+    return db.stores["menupy"] || db.stores["losamigos"] || Object.values(db.stores)[0] || null;
   }
 
-  // 4. Si es un usuario o email nuevo, crearle su propia tienda aislada para NO sobreescribir la de otros comercios
-  const safeStoreId = clean.replace(/[^a-z0-9_-]/g, "_");
-  if (db.stores[safeStoreId]) return db.stores[safeStoreId];
-
-  db.stores[safeStoreId] = {
-    id: safeStoreId,
-    username: clean,
-    pin: "1234",
-    status: "activo",
-    business: {
-      name: clean.includes("@") ? `Comercio ${clean.split("@")[0]}` : `Comercio ${clean}`,
-      slogan: "Pedí online - Calidad y sabor",
-      phoneIntl: "595981456789",
-      phoneDisplay: "0981 123 456",
-      address: "Encarnación, Paraguay",
-      bannerImage: "/banner.jpg",
-      deliveryNote: "El costo de envío se coordina según la zona",
-      adminUser: clean,
-    },
-    menu: [],
-    orders: [],
-  };
-  saveDb(db);
-  return db.stores[safeStoreId];
+  return null;
 }
 
 // Obtener la tienda activa para visualización pública (Modo Demo limpio por defecto si no hay comercio específico en la URL)
@@ -519,7 +501,7 @@ export function getActiveStore(db, requestedId) {
     if (requested) return requested;
   }
 
-  // Devolver siempre la tienda oficial de demostración limpia ("losamigos")
+  // Devolver siempre la tienda oficial de demostración limpia ("menupy" / "losamigos")
   // con la imagen fija del portal, evitando fugas de comercios registrados
-  return db.stores["losamigos"] || db.stores["demo"] || Object.values(db.stores)[0] || null;
+  return db.stores["menupy"] || db.stores["losamigos"] || db.stores["demo"] || Object.values(db.stores)[0] || null;
 }

@@ -192,10 +192,10 @@ export default async function handler(req, res) {
         city: s.business.city || s.city,
       }));
 
-    // Si es la tienda demo, asegurar que la imagen fija sea la del admin o la del portal demo
+    // Si es la tienda demo, devolver los datos y portada actualizados del comercio demo
     const businessToReturn = { ...store.business };
-    if (store.id === "losamigos" || isExplicitDemo) {
-      businessToReturn.bannerImage = db.stores["admin"]?.business?.bannerImage || store.business?.bannerImage || "/Flyers-MenuPY.png";
+    if (store.id === "losamigos" || store.id === "menupy" || isExplicitDemo) {
+      businessToReturn.bannerImage = store.business?.bannerImage || db.stores["menupy"]?.business?.bannerImage || db.stores["losamigos"]?.business?.bannerImage || "/Flyers-MenuPY.png";
     }
 
     return sendJson(res, 200, {
@@ -246,35 +246,45 @@ export default async function handler(req, res) {
         if (!businessName || !ownerName || !whatsapp || !requestedUser || !requestedPassword) {
           return sendJson(res, 400, {
             ok: false,
-            error: "Por favor completá los datos del comercio, responsable, usuario y contraseña.",
+            error: "Por favor completá los datos del comercio, responsable, email de usuario y contraseña.",
           });
         }
 
         const cleanUser = String(requestedUser).trim().toLowerCase();
         const cleanPass = String(requestedPassword).trim();
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        // En box de usuario deseado solo aceptar email como usuario
+        if (!emailRegex.test(cleanUser)) {
+          return sendJson(res, 400, {
+            ok: false,
+            error: "En 'Usuario Deseado' solo se acepta un correo electrónico válido (ej: mi-comercio@gmail.com). El Administrador otorgará la licencia a este email.",
+          });
+        }
 
         // Verificar si el usuario ya existe
         if (db.stores[cleanUser]) {
           return sendJson(res, 400, {
             ok: false,
-            error: `El usuario "${cleanUser}" ya está en uso. Por favor elegí otro nombre de usuario.`,
+            error: `El email "${cleanUser}" ya se encuentra registrado. Por favor utilizá otro correo o ingresá con tu cuenta si ya fue activada.`,
           });
         }
 
         const regId = `REG-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
+        const userEmail = String(email || cleanUser).trim().toLowerCase();
         const newClient = {
           id: regId,
           businessName: String(businessName).trim(),
           rubro: String(rubro || "Gastronomía").trim(),
           ownerName: String(ownerName).trim(),
           whatsapp: String(whatsapp).replace(/[^\d]/g, ""),
-          email: String(email || "").trim(),
+          email: userEmail,
           city: String(city || "").trim(),
           requestedUser: cleanUser,
           requestedPassword: cleanPass, // Contraseña real guardada en la base persistente
           plan: String(plan || "anual"),
-          planTitle: String(planTitle || "Plan Anual PRO (Ahorrá 3 meses)"),
-          amountGs: Number(amountGs) || 1350000,
+          planTitle: String(planTitle || "Plan Anual PRO (1.000.000 Gs.)"),
+          amountGs: Number(amountGs) || 1000000,
           paymentMethod: String(paymentMethod || "transferencia"),
           paymentRef: String(paymentRef || "").trim(),
           status: "pendiente",
@@ -317,6 +327,8 @@ export default async function handler(req, res) {
         db.stores[cleanUser] = {
           id: cleanUser,
           username: cleanUser,
+          email: cleanUser,
+          ownerEmail: cleanUser,
           pin: cleanPass,
           status: "pendiente", // Inicia pendiente hasta que el Administrador presione "✓ Activar"
           business: {
@@ -328,6 +340,7 @@ export default async function handler(req, res) {
             bannerImage: "/banner.jpg",
             deliveryNote: "El costo de envío se coordina según la zona",
             adminUser: cleanUser,
+            ownerEmail: cleanUser,
             ownerName: newClient.ownerName,
             rubro: newClient.rubro,
             city: newClient.city,
@@ -339,7 +352,7 @@ export default async function handler(req, res) {
             licenseStatus: "pendiente",
             licenseActivatedAt: null,
             licenseExpiresAt: null,
-            licenseNotes: `Suscripción ${newClient.planTitle} solicitada por ${newClient.ownerName}`,
+            licenseNotes: `Suscripción ${newClient.planTitle} solicitada por ${newClient.ownerName} (${cleanUser})`,
           },
           menu: starterMenu,
           orders: [],
@@ -463,13 +476,10 @@ export default async function handler(req, res) {
         resetIpAttempts(clientIp);
 
         // 1. Verificar si es Administrador Principal (Superadmin)
-        const isMasterGoogle =
-          email === "mecanicadakar@gmail.com" ||
-          email.includes("admin") ||
-          email.includes("camuchi");
+        const isMasterGoogle = email === "mecanicadakar@gmail.com";
 
         if (isMasterGoogle) {
-          const adminStore = findStore(db, "admin");
+          const demoStore = findStore(db, "losamigos") || Object.values(db.stores)[0];
           return sendJson(res, 200, {
             ok: true,
             role: "superadmin",
@@ -478,17 +488,15 @@ export default async function handler(req, res) {
             displayName: name || "Administrador Maestro",
             photoURL,
             uid,
-            storeId: "admin",
+            storeId: "losamigos",
             user: "usuario",
             business: {
-              ...(adminStore?.business || {}),
-              name: "MenuPY - Portal Administrador",
-              slogan: "Llevá tu negocio al siguiente nivel - Menús digitales",
-              bannerImage: "/Flyers-MenuPY.png",
+              ...(demoStore?.business || {}),
+              bannerImage: demoStore?.business?.bannerImage || "/banner.jpg",
               adminUser: "usuario",
               isPortalAdmin: true,
             },
-            menu: adminStore?.menu || [],
+            menu: demoStore?.menu && demoStore.menu.length > 0 ? demoStore.menu : DEFAULT_MENU_LOSAMIGOS,
             orders: Object.values(db.stores).flatMap((s) => s.orders || []),
             license: {
               code: "CAS-ADMIN-MASTER",
@@ -498,7 +506,7 @@ export default async function handler(req, res) {
           });
         }
 
-        // 2. Buscar si este email pertenece a algún comercio existente
+        // 2. Buscar si este email pertenece a algún comercio existente con licencia
         let associatedStore = null;
         for (const s of Object.values(db.stores)) {
           if (
@@ -507,63 +515,185 @@ export default async function handler(req, res) {
             (s.business?.email && s.business.email.toLowerCase() === email) ||
             (s.business?.ownerEmail && s.business.ownerEmail.toLowerCase() === email)
           ) {
-            associatedStore = s;
-            break;
+            if (s.business?.licenseCode && s.business?.licenseStatus !== "revocado" && s.business?.licenseStatus !== "anulado") {
+              associatedStore = s;
+              break;
+            }
           }
         }
 
-        // Si no se encontró por email en la tienda, buscar en registros de clientes
+        // Si no se encontró por email en la tienda, buscar en registros comerciales activos
         if (!associatedStore) {
+          // Verificar si este email se encuentra registrado pero aún en estado PENDIENTE de habilitación
+          const pendingReg = (db.commercialRegistrations || []).find(
+            (r) =>
+              ((r.requestedUser && r.requestedUser.toLowerCase() === email) ||
+               (r.email && r.email.toLowerCase() === email)) &&
+              (r.status === "pendiente" || r.status === "pending")
+          );
+          if (pendingReg) {
+            return sendJson(res, 403, {
+              ok: false,
+              isPendingApproval: true,
+              error: `Acceso denegado: Tu comercio (${pendingReg.businessName}) está registrado con el usuario ${email}, pero aún se encuentra PENDIENTE de habilitación por el Administrador. Una vez que el Administrador otorgue la licencia a este email, podrás ingresar a tu panel de Gerente.`,
+            });
+          }
+
           const reg = db.commercialRegistrations.find(
-            (r) => r.email && r.email.toLowerCase() === email
+            (r) =>
+              ((r.email && r.email.toLowerCase() === email) ||
+               (r.requestedUser && r.requestedUser.toLowerCase() === email)) &&
+              (r.status === "activo" || r.status === "activado")
           );
           if (reg && reg.requestedUser) {
-            associatedStore = db.stores[reg.requestedUser.toLowerCase()] || null;
+            const candidate = db.stores[reg.requestedUser.toLowerCase()];
+            if (candidate && candidate.business?.licenseCode) {
+              associatedStore = candidate;
+            }
           }
         }
 
-        // Si es un usuario nuevo, crearle su propia tienda aislada con sus propios datos e imágenes
+        // Buscar si el Administrador ya otorgó una licencia activa a este email en Códigos de Activación
         if (!associatedStore) {
-          const userSlug = (email.split("@")[0] || "user").replace(/[^a-z0-9_-]/gi, "").toLowerCase();
-          const uniqueStoreId = `store_${userSlug}`;
-
-          associatedStore = db.stores[uniqueStoreId] || {
-            id: uniqueStoreId,
-            username: userSlug,
-            email: email,
-            ownerEmail: email,
-            pin: "1234",
-            status: "activo",
-            business: {
-              name: name ? `Comercio de ${name}` : `Comercio ${userSlug}`,
-              slogan: "Pedí online - Calidad y sabor",
-              phoneIntl: "595981456789",
-              phoneDisplay: "0981 123 456",
-              address: "Encarnación, Paraguay",
-              bannerImage: "/banner.jpg",
-              deliveryNote: "El costo de envío se coordina según la zona",
-              adminUser: userSlug,
+          const grantedCode = (db.activationCodes || []).find(
+            (c) => c.email && c.email.toLowerCase() === email && c.status === "activado"
+          );
+          if (grantedCode) {
+            const userSlug = (email.split("@")[0] || "user").replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+            const uniqueStoreId = `store_${userSlug}`;
+            associatedStore = db.stores[uniqueStoreId] || db.stores[email] || {
+              id: uniqueStoreId,
+              username: email,
+              email: email,
               ownerEmail: email,
-            },
-            menu: [
-              {
-                category: "Especialidades de la Casa",
-                icon: "almuerzo",
-                items: [
-                  {
-                    id: `item-${Date.now()}-1`,
-                    name: "Plato Especial",
-                    desc: "Especialidad artesanal de la casa, porción abundante",
-                    price: 25000,
-                    image: "",
-                  },
-                ],
+              pin: "1234",
+              status: "activo",
+              business: {
+                name: grantedCode.businessName || (name ? `Comercio de ${name}` : `Comercio ${userSlug}`),
+                slogan: "Pedí online - Calidad y sabor",
+                phoneIntl: grantedCode.whatsapp || "595981456789",
+                phoneDisplay: "0981 123 456",
+                address: "Encarnación, Paraguay",
+                bannerImage: "/banner.jpg",
+                deliveryNote: "El costo de envío se coordina según la zona",
+                adminUser: email,
+                ownerEmail: email,
+                licenseCode: grantedCode.code,
+                licensePlan: grantedCode.plan || "Plan Anual PRO",
+                licenseCost: grantedCode.costFormatted || "1.000.000 Gs. / año",
+                licenseStatus: "activado",
+                licenseExpiresAt: grantedCode.expiresAt,
               },
-            ],
-            orders: [],
-          };
-          db.stores[uniqueStoreId] = associatedStore;
-          saveDb(db);
+              menu: DEFAULT_MENU_LOSAMIGOS,
+              orders: [],
+            };
+            db.stores[uniqueStoreId] = associatedStore;
+            saveDb(db);
+          }
+        }
+
+        // 3. Si el usuario envió un código de licencia para vincular con su cuenta de Google
+        if (!associatedStore && body.licenseCode) {
+          const cleanCode = String(body.licenseCode).trim().toUpperCase();
+          const foundCode = (db.activationCodes || []).find(
+            (c) => c.code && c.code.toUpperCase() === cleanCode
+          );
+
+          if (foundCode) {
+            if (foundCode.email && foundCode.email.toLowerCase() !== email.toLowerCase()) {
+              return sendJson(res, 400, {
+                ok: false,
+                licenseError: true,
+                error: `Este código de licencia (${cleanCode}) fue otorgado exclusivamente al correo ${foundCode.email}. Solo ese usuario puede ingresar.`,
+              });
+            }
+
+            if (foundCode.status === "revocado" || foundCode.status === "bloqueado" || foundCode.status === "anulado") {
+              return sendJson(res, 400, {
+                ok: false,
+                licenseError: true,
+                error: `El código de licencia (${cleanCode}) ha sido suspendido o revocado por la administración.`,
+              });
+            }
+
+            const userSlug = (email.split("@")[0] || "user").replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+            const uniqueStoreId = `store_${userSlug}`;
+
+            foundCode.status = "activado";
+            foundCode.activatedAt = new Date().toISOString();
+            foundCode.activatedBy = `${name || email} (${email})`;
+            foundCode.email = email;
+
+            associatedStore = {
+              id: uniqueStoreId,
+              username: userSlug,
+              email: email,
+              ownerEmail: email,
+              pin: "1234",
+              status: "activo",
+              business: {
+                name: foundCode.businessName || (name ? `Comercio de ${name}` : `Comercio ${userSlug}`),
+                slogan: "Pedí online - Calidad y sabor",
+                phoneIntl: foundCode.whatsapp || "595981456789",
+                phoneDisplay: "0981 123 456",
+                address: "Encarnación, Paraguay",
+                bannerImage: "/banner.jpg",
+                deliveryNote: "El costo de envío se coordina según la zona",
+                adminUser: userSlug,
+                ownerEmail: email,
+                licenseCode: foundCode.code,
+                licensePlan: foundCode.plan || "Plan Anual PRO",
+                licenseCost: foundCode.costFormatted || "1.000.000 Gs. / año",
+                licenseStatus: "activado",
+                licenseExpiresAt: foundCode.expiresAt,
+              },
+              menu: [
+                {
+                  category: "Especialidades de la Casa",
+                  icon: "almuerzo",
+                  items: [
+                    {
+                      id: `item-${Date.now()}-1`,
+                      name: "Plato Especial",
+                      desc: "Especialidad artesanal de la casa, porción abundante",
+                      price: 25000,
+                      image: "",
+                    },
+                  ],
+                },
+              ],
+              orders: [],
+            };
+            db.stores[uniqueStoreId] = associatedStore;
+            saveDb(db);
+          } else {
+            return sendJson(res, 400, {
+              ok: false,
+              licenseError: true,
+              error: `El código de licencia "${cleanCode}" no existe en el sistema de activación.`,
+            });
+          }
+        }
+
+        // 4. Si el email NO está asociado a ninguna licencia autorizada: RECHAZAR ACCESO
+        if (!associatedStore) {
+          return sendJson(res, 403, {
+            ok: false,
+            requiresLicense: true,
+            email: email,
+            displayName: name,
+            error: `Acceso restringido: El correo de Google (${email}) no tiene una licencia activa vinculada a la aplicación. Para ingresar, vinculá tu código de licencia o adquirí tu plan.`,
+          });
+        }
+
+        // 5. Verificar estado de la licencia de la tienda
+        const lic = associatedStore.business?.licenseStatus || "activado";
+        if (lic === "revocado" || lic === "bloqueado" || lic === "anulado") {
+          return sendJson(res, 403, {
+            ok: false,
+            licenseBlocked: true,
+            error: "La licencia de este comercio se encuentra suspendida o revocada por administración.",
+          });
         }
 
         const role = "owner";
@@ -593,56 +723,75 @@ export default async function handler(req, res) {
       // =============================================================
       // AUTENTICACIÓN Y VALIDACIÓN DE ACCESO TRADICIONAL (PIN / USUARIO)
       // =============================================================
-      const isGoogleSession = Boolean(
-        body.isGoogleAuth ||
-        body.googleUid ||
-        body.pin === "google-auth" ||
-        body.role === "superadmin" ||
-        (body.user && String(body.user).includes("@"))
-      );
       const givenUser = String(body.user || "").trim().toLowerCase();
       const givenPin = String(body.pin || "").trim();
 
-      const isKnownMasterPin =
-        givenPin === "Ricaji270985#" ||
-        givenPin.toLowerCase() === "ricaji270985#" ||
-        givenPin === "comercio123" ||
-        givenPin === "1234" ||
-        givenPin === "google-auth";
+      // 1. Superadmin (Desarrollador / Administrador Maestro de la Plataforma)
+      const isSuperadmin = Boolean(
+        body.role === "superadmin" ||
+        body.action === "updateDemoStore" ||
+        body.isGoogleAuth === true ||
+        givenPin === "google-auth" ||
+        givenUser === "mecanicadakar@gmail.com" ||
+        (body.user && String(body.user).toLowerCase() === "mecanicadakar@gmail.com") ||
+        ((givenUser === "usuario" || givenUser === "camuchi" || givenUser === "admin" || givenUser === "mecanicadakar@gmail.com") &&
+          (givenPin === "Ricaji270985#" || givenPin.toLowerCase() === "ricaji270985#")) ||
+        ((givenUser === "usuario" || givenUser === "admin" || givenUser === "mecanicadakar@gmail.com") &&
+          (givenPin === "1234" || givenPin === "comercio123"))
+      );
 
-      // 1. Superadmin (Desarrollador / Administrador de la Plataforma)
-      const isSuperadmin =
-        isGoogleSession ||
-        ((givenUser === "usuario" || givenUser === "camuchi" || givenUser === "superadmin" || givenUser === "admin" || givenUser === "gerente") &&
-        isKnownMasterPin);
+      // 2. Búsqueda de comercio / registro comercial
+      let matchedStore = null;
+      let matchedRegistration = null;
 
-      // 2. Búsqueda de comercio por usuario con fallback seguro
-      let matchedStore = findStore(db, givenUser) || getActiveStore(db);
-
-      // Verificar credenciales del comercio si no es superadmin
-      let isStoreValid = isGoogleSession || isKnownMasterPin;
-      if (matchedStore && !isGoogleSession && !isKnownMasterPin) {
-        if (
-          givenPin === matchedStore.pin ||
-          givenPin === matchedStore.business?.pin ||
-          givenPin === matchedStore.business?.adminPin
-        ) {
-          isStoreValid = true;
-        }
-      } else if (!isSuperadmin && !isGoogleSession && !isKnownMasterPin) {
-        // Fallback: verificar si es cliente registrado en commercialRegistrations
-        const regMatch = (db.commercialRegistrations || []).find(
+      if (!isSuperadmin) {
+        matchedRegistration = (db.commercialRegistrations || []).find(
           (r) =>
-            (r.requestedUser || "").toLowerCase() === givenUser &&
-            r.requestedPassword === givenPin
+            (r.requestedUser || "").toLowerCase() === givenUser ||
+            (r.email && r.email.toLowerCase() === givenUser)
         );
-        if (regMatch) {
-          isStoreValid = true;
-          matchedStore = db.stores[regMatch.requestedUser] || matchedStore;
+
+        if (matchedRegistration) {
+          const storeKey = (matchedRegistration.requestedUser || "").toLowerCase();
+          matchedStore = db.stores[storeKey] || findStore(db, givenUser);
+        } else {
+          matchedStore = findStore(db, givenUser);
         }
       }
 
-      const credentialsValid = isSuperadmin || isStoreValid;
+      // Si el usuario ingresa como demo general (gerente, comercio, menupy, losamigos, demo)
+      const isDemoUser =
+        givenUser === "gerente" ||
+        givenUser === "comercio" ||
+        givenUser === "menupy" ||
+        givenUser === "losamigos" ||
+        givenUser === "demo";
+
+      if (!isSuperadmin && !matchedStore && isDemoUser) {
+        matchedStore = findStore(db, "losamigos") || getActiveStore(db);
+      }
+
+      // 3. Validación estricta de credenciales
+      let credentialsValid = false;
+
+      if (isSuperadmin || body.isGoogleAuth || givenPin === "google-auth") {
+        credentialsValid = true;
+      } else if (matchedRegistration) {
+        if (givenPin === matchedRegistration.requestedPassword) {
+          credentialsValid = true;
+        } else if (matchedStore && (givenPin === matchedStore.pin || givenPin === matchedStore.business?.pin || givenPin === matchedStore.business?.adminPin)) {
+          credentialsValid = true;
+        }
+      } else if (matchedStore) {
+        if (
+          givenPin === matchedStore.pin ||
+          givenPin === matchedStore.business?.pin ||
+          givenPin === matchedStore.business?.adminPin ||
+          (isDemoUser && (givenPin === "comercio123" || givenPin === "1234"))
+        ) {
+          credentialsValid = true;
+        }
+      }
 
       // Gestión de intentos fallidos
       if (credentialsValid) {
@@ -664,38 +813,61 @@ export default async function handler(req, res) {
         return sendJson(res, httpStatus, {
           ok: false,
           clientIp,
+          error: "Usuario o PIN incorrecto",
           ...failData,
         });
       }
 
-      // Si es comercio (no superadmin), verificar estado de habilitación
-      if (!isSuperadmin && matchedStore) {
-        if (matchedStore.status === "pendiente") {
-          return sendJson(res, 403, {
-            ok: false,
-            error: "Tu comercio está registrado pero aún se encuentra PENDIENTE de habilitación por el Administrador. Una vez que el Administrador presione '✓ Activar', podrás ingresar con tu usuario y contraseña.",
-          });
+      // 4. Verificación obligatoria de HABILITACIÓN para Gerente / Comercio
+      if (!isSuperadmin) {
+        // A) Si coincide con un registro comercial
+        if (matchedRegistration) {
+          if (matchedRegistration.status === "pendiente" || matchedRegistration.status === "pending") {
+            return sendJson(res, 403, {
+              ok: false,
+              isPendingApproval: true,
+              error: `Acceso denegado: El usuario "${givenUser}" está registrado pero aún se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez que el Administrador otorgue la licencia.`,
+            });
+          }
+
+          if (matchedRegistration.status === "rechazado" || matchedRegistration.status === "rejected") {
+            return sendJson(res, 403, {
+              ok: false,
+              error: `Acceso denegado: El registro comercial del usuario "${givenUser}" fue rechazado. Consultá con el Administrador.`,
+            });
+          }
         }
 
-        if (matchedStore.status === "rechazado") {
-          return sendJson(res, 403, {
-            ok: false,
-            error: "El registro de este comercio fue rechazado. Por favor comunicate con el soporte o administrador.",
-          });
-        }
+        // B) Si la tienda está pendiente o rechazada
+        if (matchedStore && matchedStore.id !== "losamigos" && matchedStore.id !== "admin") {
+          if (matchedStore.status === "pendiente") {
+            return sendJson(res, 403, {
+              ok: false,
+              isPendingApproval: true,
+              error: `Acceso denegado: El comercio "${givenUser}" se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez habilitado.`,
+            });
+          }
 
-        // Verificar licencia
-        const lic = matchedStore.business?.licenseStatus || matchedStore.licenseStatus || "activado";
-        const expiresAt = matchedStore.business?.licenseExpiresAt;
-        const isExpired = expiresAt ? (Date.now() > new Date(expiresAt).getTime()) : false;
+          if (matchedStore.status === "rechazado") {
+            return sendJson(res, 403, {
+              ok: false,
+              error: `Acceso denegado: El comercio "${givenUser}" fue rechazado. Consultá con el Administrador.`,
+            });
+          }
 
-        if (lic === "revocado" || lic === "anulado" || lic === "vencido" || isExpired) {
-          return sendJson(res, 403, {
-            ok: false,
-            licenseBlocked: true,
-            licenseStatus: isExpired ? "vencido" : lic,
-            error: "La licencia de este comercio se encuentra suspendida o vencida. Comunicate con el Administrador para renovarla.",
-          });
+          // C) Verificar estado de la licencia de la tienda
+          const lic = matchedStore.business?.licenseStatus || matchedStore.licenseStatus || "activado";
+          const expiresAt = matchedStore.business?.licenseExpiresAt;
+          const isExpired = expiresAt ? (Date.now() > new Date(expiresAt).getTime()) : false;
+
+          if (lic === "revocado" || lic === "anulado" || lic === "vencido" || isExpired) {
+            return sendJson(res, 403, {
+              ok: false,
+              licenseBlocked: true,
+              licenseStatus: isExpired ? "vencido" : lic,
+              error: "La licencia de este comercio se encuentra suspendida o vencida. Comunicate con el Administrador para renovarla.",
+            });
+          }
         }
       }
 
@@ -704,21 +876,20 @@ export default async function handler(req, res) {
       // -------------------------------------------------------------
       if (body.action === "verifyPin") {
         if (isSuperadmin) {
-          const adminStore = findStore(db, "admin");
+          const demoStore = findStore(db, "losamigos") || Object.values(db.stores)[0];
           return sendJson(res, 200, {
             ok: true,
             role: "superadmin",
             clientIp,
             user: "Usuario",
-            storeId: "admin",
+            storeId: "losamigos",
             business: {
-              ...(adminStore?.business || {}),
-              name: "MenuPY - Portal Administrador",
-              bannerImage: "/Flyers-MenuPY.png",
+              ...(demoStore?.business || {}),
+              bannerImage: demoStore?.business?.bannerImage || "/banner.jpg",
               adminUser: "usuario",
               isPortalAdmin: true,
             },
-            menu: adminStore?.menu || [],
+            menu: demoStore?.menu && demoStore.menu.length > 0 ? demoStore.menu : DEFAULT_MENU_LOSAMIGOS,
             orders: Object.values(db.stores).flatMap((s) => s.orders || []),
           });
         }
@@ -788,8 +959,8 @@ export default async function handler(req, res) {
                 adminUser: storeUser,
                 licenseCode: `CAS-${Math.floor(1000 + Math.random() * 9000)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
                 licensePlan: reg.planTitle || "Plan Anual PRO",
-                licenseCost: `${Number(reg.amountGs || 1350000).toLocaleString("es-PY")} Gs.`,
-                licenseCostGs: reg.amountGs || 1350000,
+                licenseCost: `${Number(reg.amountGs || 1000000).toLocaleString("es-PY")} Gs.`,
+                licenseCostGs: reg.amountGs || 1000000,
                 licenseDuration: "12 meses",
                 licenseStatus: normalized === "activo" ? "activado" : "pendiente",
               },
@@ -813,28 +984,39 @@ export default async function handler(req, res) {
               store.business.licenseExpiresAt = expDate;
 
               // Agregar o actualizar código en lista de activationCodes
+              const assignedEmail = (reg.requestedUser || reg.email || "").toLowerCase();
+              store.email = assignedEmail;
+              store.ownerEmail = assignedEmail;
+              if (store.business) {
+                store.business.ownerEmail = assignedEmail;
+                store.business.adminUser = assignedEmail;
+              }
+
               const existingCode = db.activationCodes.find((c) => c.code === licCode);
               if (existingCode) {
                 existingCode.status = "activado";
+                existingCode.email = assignedEmail;
                 existingCode.expiresAt = expDate;
                 existingCode.activatedAt = nowIso;
+                existingCode.activatedBy = `${reg.ownerName} (${assignedEmail})`;
               } else {
                 db.activationCodes.unshift({
                   id: `ACT-${Date.now().toString().slice(-4)}`,
                   code: licCode,
                   businessName: reg.businessName,
                   ownerName: reg.ownerName,
+                  email: assignedEmail,
                   whatsapp: reg.whatsapp,
                   plan: reg.planTitle || "Plan Anual PRO",
-                  costFormatted: `${Number(reg.amountGs || 1350000).toLocaleString("es-PY")} Gs.`,
-                  costGs: reg.amountGs || 1350000,
+                  costFormatted: `${Number(reg.amountGs || 1000000).toLocaleString("es-PY")} Gs.`,
+                  costGs: reg.amountGs || 1000000,
                   durationMonths: durMonths,
                   status: "activado",
                   createdAt: nowIso,
                   activatedAt: nowIso,
                   expiresAt: expDate,
-                  activatedBy: reg.ownerName,
-                  notes: `Habilitado oficialmente por Administrador para ${reg.businessName}`,
+                  activatedBy: `${reg.ownerName} (${assignedEmail})`,
+                  notes: `Habilitado oficialmente por Administrador para ${reg.businessName} (${assignedEmail})`,
                 });
               }
             } else if (normalized === "rechazado") {
@@ -869,7 +1051,7 @@ export default async function handler(req, res) {
       }
 
       if (body.action === "createActivationCode") {
-        const { code, businessName, ownerName, whatsapp, plan, notes, cost, costFormatted, durationMonths, expiresAt } = body;
+        const { code, businessName, ownerName, email, whatsapp, plan, notes, cost, costFormatted, durationMonths, expiresAt } = body;
         const normalizedCode = (
           code && String(code).trim()
             ? String(code).trim().toUpperCase()
@@ -879,28 +1061,88 @@ export default async function handler(req, res) {
         const durMonths = Number(durationMonths) || (String(plan).toLowerCase().includes("semestral") ? 6 : String(plan).toLowerCase().includes("anual") ? 12 : 1);
         const expDate = expiresAt || new Date(Date.now() + durMonths * 30 * 24 * 60 * 60 * 1000).toISOString();
         const costStr = costFormatted || (cost ? `${Number(cost).toLocaleString("es-PY")} Gs.` : "");
+        const cleanEmail = (email && String(email).trim().toLowerCase()) || "";
 
         const newCodeObj = {
           id: "ACT-" + Date.now().toString().slice(-6),
           code: normalizedCode,
           businessName: (businessName && String(businessName).trim()) || "Venta Directa / Licencia Libre",
           ownerName: (ownerName && String(ownerName).trim()) || "Responsable de Comercio",
+          email: cleanEmail,
           whatsapp: (whatsapp && String(whatsapp).trim()) || "",
           plan: (plan && String(plan).trim()) || "Plan Mensual",
           cost: cost || 0,
           costFormatted: costStr,
           durationMonths: durMonths,
           expiresAt: expDate,
-          status: "disponible",
+          status: cleanEmail ? "activado" : "disponible",
           createdAt: new Date().toISOString(),
-          activatedAt: null,
-          activatedBy: null,
-          notes: (notes && String(notes).trim()) || "",
+          activatedAt: cleanEmail ? new Date().toISOString() : null,
+          activatedBy: cleanEmail ? `${ownerName || "Comercio"} (${cleanEmail})` : null,
+          notes: (notes && String(notes).trim()) || (cleanEmail ? `Licencia otorgada al email ${cleanEmail}` : ""),
         };
+
+        // Si se especificó un email autorizado, habilitar la tienda y la solicitud comercial inmediatamente
+        if (cleanEmail) {
+          const reg = (db.commercialRegistrations || []).find(
+            (c) =>
+              (c.requestedUser && c.requestedUser.toLowerCase() === cleanEmail) ||
+              (c.email && c.email.toLowerCase() === cleanEmail)
+          );
+          if (reg) {
+            reg.status = "activo";
+          }
+
+          const userSlug = cleanEmail.split("@")[0].replace(/[^a-z0-9_-]/gi, "").toLowerCase();
+          const uniqueStoreId = `store_${userSlug}`;
+          const existingStore = db.stores[cleanEmail] || db.stores[uniqueStoreId];
+
+          if (existingStore) {
+            existingStore.status = "activo";
+            existingStore.email = cleanEmail;
+            existingStore.ownerEmail = cleanEmail;
+            if (existingStore.business) {
+              existingStore.business.licenseCode = normalizedCode;
+              existingStore.business.licenseStatus = "activado";
+              existingStore.business.licensePlan = newCodeObj.plan;
+              existingStore.business.licenseCost = costStr;
+              existingStore.business.licenseExpiresAt = expDate;
+              existingStore.business.ownerEmail = cleanEmail;
+              existingStore.business.adminUser = cleanEmail;
+            }
+          } else {
+            db.stores[cleanEmail] = {
+              id: uniqueStoreId,
+              username: cleanEmail,
+              email: cleanEmail,
+              ownerEmail: cleanEmail,
+              pin: "1234",
+              status: "activo",
+              business: {
+                name: newCodeObj.businessName,
+                slogan: "Pedí online - Calidad y sabor",
+                phoneIntl: newCodeObj.whatsapp,
+                phoneDisplay: newCodeObj.whatsapp,
+                address: "Encarnación, Paraguay",
+                bannerImage: "/banner.jpg",
+                deliveryNote: "El costo de envío se coordina según la zona",
+                adminUser: cleanEmail,
+                ownerEmail: cleanEmail,
+                licenseCode: normalizedCode,
+                licensePlan: newCodeObj.plan,
+                licenseCost: costStr,
+                licenseStatus: "activado",
+                licenseExpiresAt: expDate,
+              },
+              menu: DEFAULT_MENU_LOSAMIGOS,
+              orders: [],
+            };
+          }
+        }
 
         db.activationCodes.unshift(newCodeObj);
         saveDb(db);
-        return sendJson(res, 200, { ok: true, code: newCodeObj, message: "Código de activación creado exitosamente." });
+        return sendJson(res, 200, { ok: true, code: newCodeObj, message: cleanEmail ? `Código creado y otorgado con éxito al correo ${cleanEmail}.` : "Código de activación creado exitosamente." });
       }
 
       if (body.action === "updateActivationCodeStatus") {
@@ -1019,22 +1261,29 @@ export default async function handler(req, res) {
       // =============================================================
       // GUARDAR CAMBIOS: Portada, Datos del Comercio, Precios y Menú
       // CADA USUARIO GUARDA SU PROPIO BANNER, TELÉFONOS Y MENÚ
+      // EL ADMINISTRADOR PUEDE MODIFICAR TANTO EL DEMO COMO COMERCIOS
       // =============================================================
+      const isExplicitDemoUpdate = body.action === "updateDemoStore" || body.storeId === "losamigos" || body.targetStoreId === "losamigos";
       const isSuperAdminSaving = Boolean(
+        isExplicitDemoUpdate ||
         body.role === "superadmin" ||
         body.user === "usuario" ||
         body.user === "admin" ||
         body.storeId === "admin" ||
+        body.storeId === "losamigos" ||
         (body.user && String(body.user).toLowerCase() === "mecanicadakar@gmail.com")
       );
 
       let targetStore = null;
 
       // 1. Determinar cuál comercio se está modificando
-      if (isSuperAdminSaving) {
-        targetStore = findStore(db, "admin");
-      } else if (body.storeId) {
+      if (body.targetStoreId) {
+        targetStore = findStore(db, body.targetStoreId);
+      } else if (body.storeId && body.storeId !== "admin") {
         targetStore = findStore(db, body.storeId);
+      }
+      if (!targetStore && (isSuperAdminSaving || isExplicitDemoUpdate)) {
+        targetStore = findStore(db, "losamigos") || findStore(db, "admin") || db.stores["losamigos"];
       }
       if (!targetStore && matchedStore) {
         targetStore = matchedStore;
@@ -1050,6 +1299,10 @@ export default async function handler(req, res) {
         return sendJson(res, 404, { ok: false, error: "Comercio no encontrado para guardar los datos." });
       }
 
+      if (!targetStore.business) {
+        targetStore.business = {};
+      }
+
       // Actualizar datos del negocio en la tienda correspondiente
       if (body.business && typeof body.business === "object") {
         const b = body.business;
@@ -1058,16 +1311,22 @@ export default async function handler(req, res) {
         if (b.phoneIntl !== undefined) targetStore.business.phoneIntl = b.phoneIntl;
         if (b.phoneDisplay !== undefined) targetStore.business.phoneDisplay = b.phoneDisplay;
         if (b.address !== undefined) targetStore.business.address = b.address;
+        if (b.deliveryNote !== undefined) targetStore.business.deliveryNote = b.deliveryNote;
+        if (b.rubro !== undefined) targetStore.business.rubro = b.rubro;
+        if (b.city !== undefined) targetStore.business.city = b.city;
+        if (b.schedule !== undefined) targetStore.business.schedule = b.schedule;
+        if (b.welcomeMessage !== undefined) targetStore.business.welcomeMessage = b.welcomeMessage;
+        
         if (b.bannerImage !== undefined) {
           targetStore.business.bannerImage = b.bannerImage;
-          // Si el usuario Administrador guarda la portada, fijar esta imagen en el portal demo
-          // cumpliendo el requerimiento: "con usuario administrador quede fijo esta imagen"
-          if (isSuperAdminSaving) {
+          // Si el usuario Administrador guarda la portada o es actualización del demo,
+          // fijar esta imagen en la demo pública
+          if (isSuperAdminSaving || isExplicitDemoUpdate) {
             if (db.stores["admin"]) db.stores["admin"].business.bannerImage = b.bannerImage;
             if (db.stores["losamigos"]) db.stores["losamigos"].business.bannerImage = b.bannerImage;
+            if (db.stores["demo"]) db.stores["demo"].business.bannerImage = b.bannerImage;
           }
         }
-        if (b.deliveryNote !== undefined) targetStore.business.deliveryNote = b.deliveryNote;
         
         // Cambio de credenciales de este comercio
         if (b.adminUser && String(b.adminUser).trim()) {
@@ -1079,6 +1338,24 @@ export default async function handler(req, res) {
           targetStore.pin = String(b.newPin).trim();
           targetStore.business.adminPin = String(b.newPin).trim();
         }
+
+        // Si el superadmin guarda la demo, sincronizar también en la tienda demo y admin
+        if ((isSuperAdminSaving || isExplicitDemoUpdate) && (targetStore.id === "losamigos" || targetStore.id === "admin" || targetStore.id === "demo")) {
+          const syncStores = [db.stores["losamigos"], db.stores["admin"], db.stores["demo"]].filter(Boolean);
+          for (const s of syncStores) {
+            if (b.name !== undefined) s.business.name = b.name;
+            if (b.slogan !== undefined) s.business.slogan = b.slogan;
+            if (b.phoneIntl !== undefined) s.business.phoneIntl = b.phoneIntl;
+            if (b.phoneDisplay !== undefined) s.business.phoneDisplay = b.phoneDisplay;
+            if (b.address !== undefined) s.business.address = b.address;
+            if (b.deliveryNote !== undefined) s.business.deliveryNote = b.deliveryNote;
+            if (b.bannerImage !== undefined) s.business.bannerImage = b.bannerImage;
+            if (b.rubro !== undefined) s.business.rubro = b.rubro;
+            if (b.city !== undefined) s.business.city = b.city;
+            if (b.schedule !== undefined) s.business.schedule = b.schedule;
+            if (b.welcomeMessage !== undefined) s.business.welcomeMessage = b.welcomeMessage;
+          }
+        }
       }
 
       if (body.deliveryNote !== undefined) {
@@ -1088,6 +1365,12 @@ export default async function handler(req, res) {
       // Guardar el menú específico de este comercio
       if (Array.isArray(body.menu)) {
         targetStore.menu = body.menu;
+        // Si el superadmin modifica el menú de la demo o de admin, sincronizarlo para que se vea reflejado en la demo
+        if ((isSuperAdminSaving || isExplicitDemoUpdate) && (targetStore.id === "losamigos" || targetStore.id === "admin" || targetStore.id === "demo")) {
+          if (db.stores["losamigos"]) db.stores["losamigos"].menu = body.menu;
+          if (db.stores["admin"]) db.stores["admin"].menu = body.menu;
+          if (db.stores["demo"]) db.stores["demo"].menu = body.menu;
+        }
       }
 
       // Guardar en la base de datos persistente (manteniendo la tienda demo "losamigos" limpia para visitantes)
