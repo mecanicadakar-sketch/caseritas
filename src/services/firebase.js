@@ -98,7 +98,7 @@ export async function saveUserProfileToFirestore(userId, profileData) {
       email: profileData.email || "",
       displayName: profileData.displayName || "",
       photoURL: profileData.photoURL || "",
-      role: isSuper ? "superadmin" : (profileData.role || "owner"),
+      role: isSuper ? "superadmin" : (profileData.role || "pending_license"),
       businessName: profileData.name || profileData.businessName || (isSuper ? "MenuPY - Portal Administrador" : "Mi Negocio"),
       slogan: profileData.slogan || (isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor"),
       bannerImage: profileData.bannerImage || defaultBanner,
@@ -107,6 +107,9 @@ export async function saveUserProfileToFirestore(userId, profileData) {
       address: profileData.address || "Encarnación, Paraguay",
       deliveryNote: profileData.deliveryNote || "El costo de envío se coordina según la zona",
       storeId: profileData.storeId || (isSuper ? "admin" : userId),
+      licenseCode: profileData.licenseCode || (isSuper ? "CAS-ADMIN-MASTER" : null),
+      licensePlan: profileData.licensePlan || (isSuper ? "Plan Maestro" : null),
+      licenseStatus: profileData.licenseStatus || (isSuper ? "activado" : "sin_licencia"),
       updatedAt: new Date().toISOString(),
     };
 
@@ -183,6 +186,37 @@ export async function getStoreProfileFromFirestore(storeId) {
 }
 
 /**
+ * Guarda o actualiza la configuración de una tienda en Firestore `stores/{storeId}`
+ */
+export async function saveStoreToFirestore(storeId, storeData) {
+  if (!storeId) return null;
+
+  try {
+    const storeRef = doc(db, "stores", storeId);
+    const payload = {
+      id: storeId,
+      name: storeData.name || storeData.businessName || "Menu Py",
+      slogan: storeData.slogan || "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
+      bannerImage: storeData.bannerImage || "/Flyers-MenuPY.png",
+      phoneIntl: storeData.phoneIntl || "",
+      phoneDisplay: storeData.phoneDisplay || "",
+      address: storeData.address || "Encarnación, Paraguay",
+      deliveryNote: storeData.deliveryNote || "El costo de envío se coordina según la zona",
+      status: "activo",
+      updatedAt: new Date().toISOString(),
+    };
+    if (Array.isArray(storeData.menu)) {
+      payload.menu = storeData.menu;
+    }
+    await setDoc(storeRef, payload, { merge: true });
+    return { ok: true, data: payload };
+  } catch (err) {
+    console.warn("Aviso Firestore al guardar store:", err);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Iniciar sesión con cuenta de Google usando ventana emergente oficial
  * y recuperar/inicializar automáticamente el perfil único del usuario en Firestore
  */
@@ -196,14 +230,14 @@ export async function signInWithGoogle() {
 
     // Si no existe, inicializar con datos de Google
     if (!existingProfile) {
-      const isSuper = user.email === "mecanicadakar@gmail.com" || user.email?.includes("admin");
+      const isSuper = user.email === "mecanicadakar@gmail.com";
       const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
       const initialProfile = {
         uid: user.uid,
         email: user.email,
         displayName: user.displayName || user.email?.split("@")[0] || "Usuario Google",
         photoURL: user.photoURL || "",
-        role: isSuper ? "superadmin" : "owner",
+        role: isSuper ? "superadmin" : "pending_license",
         businessName: isSuper ? "MenuPY - Portal Administrador" : `Comercio de ${user.displayName || "Usuario"}`,
         slogan: isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor",
         bannerImage: defaultBanner,
@@ -212,6 +246,9 @@ export async function signInWithGoogle() {
         address: "Encarnación, Paraguay",
         deliveryNote: "El costo de envío se coordina según la zona",
         storeId: isSuper ? "admin" : user.uid,
+        licenseCode: isSuper ? "CAS-ADMIN-MASTER" : null,
+        licensePlan: isSuper ? "Plan Maestro" : null,
+        licenseStatus: isSuper ? "activado" : "sin_licencia",
       };
       await saveUserProfileToFirestore(user.uid, initialProfile);
       existingProfile = initialProfile;

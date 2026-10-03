@@ -33,6 +33,8 @@ import {
   onAuthChange,
   saveUserProfileToFirestore,
   getUserProfileFromFirestore,
+  getStoreProfileFromFirestore,
+  saveStoreToFirestore,
 } from "./services/firebase.js";
 
 /* =========================================================================
@@ -61,8 +63,8 @@ const DEFAULT_APP_PRICING_PLANS = [
     id: "mensual",
     title: "Plan Mensual",
     badge: "Básico",
-    priceGs: 150000,
-    priceFormatted: "150.000 Gs.",
+    priceGs: 100000,
+    priceFormatted: "100.000 Gs.",
     period: "por mes",
     description: "Ideal para comenzar a digitalizar tu local sin compromisos largos.",
     savings: null,
@@ -79,11 +81,11 @@ const DEFAULT_APP_PRICING_PLANS = [
     id: "semestral",
     title: "Plan Semestral",
     badge: "🎁 ¡1 Mes Gratis!",
-    priceGs: 750000,
-    priceFormatted: "750.000 Gs.",
+    priceGs: 500000,
+    priceFormatted: "500.000 Gs.",
     period: "por 6 meses",
-    description: "Abonás 5 meses y recibís 6 meses de servicio (equivale a 125.000 Gs./mes).",
-    savings: "Ahorrás 150.000 Gs.",
+    description: "Abonás 5 meses y recibís 6 meses de servicio (equivale a 83.333 Gs./mes bonificado).",
+    savings: "Ahorrás 100.000 Gs.",
     features: [
       "Todo lo incluido en el Plan Mensual",
       "1 mes de servicio bonificado de regalo",
@@ -95,16 +97,16 @@ const DEFAULT_APP_PRICING_PLANS = [
   {
     id: "anual",
     title: "Plan Anual PRO",
-    badge: "⭐ ¡Más Elegido! 3 Meses Gratis",
-    priceGs: 1350000,
-    priceFormatted: "1.350.000 Gs.",
+    badge: "⭐ ¡Más Elegido! 2 Meses Gratis",
+    priceGs: 1000000,
+    priceFormatted: "1.000.000 Gs.",
     period: "por 12 meses",
-    description: "Abonás 9 meses y disfrutás de 1 año completo (equivale a 112.500 Gs./mes).",
-    savings: "Ahorrás 450.000 Gs. (25% OFF)",
+    description: "Abonás 10 meses y disfrutás de 1 año completo (equivale a 83.333 Gs./mes).",
+    savings: "Ahorrás 200.000 Gs.",
     highlighted: true,
     features: [
       "Todo lo incluido en el Plan Semestral",
-      "3 meses de servicio bonificados gratis",
+      "2 meses de servicio bonificados gratis",
       "Diseño y personalización de portada con tu logo",
       "Código QR vectorial de alta definición para imprimir en mesas y barra",
       "Soporte VIP prioritario vía WhatsApp",
@@ -322,25 +324,101 @@ function formatLockTime(seconds) {
 }
 
 const DEFAULT_BUSINESS = {
-  name: "Rotisería Los Amigos",
-  slogan: "Pedí online - Comidas caseras y minutas",
+  name: "Menu Py",
+  slogan: "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
   phoneIntl: "595981456789",
   phoneDisplay: "0981 123 456",
-  address: "Santa María III, Ruta 6ta km 3.5, Encarnación",
+  address: "Encarnación, Paraguay",
   bannerImage: "/Flyers-MenuPY.png",
   deliveryNote: "El costo de envío se coordina según la zona",
   adminUser: "gerente",
   sessionPersistence: "keep_active", // "keep_active" | "close_on_exit"
   licenseCode: "CAS-7K9B-X2M4",
   licensePlan: "Plan Anual PRO (1 Año)",
-  licenseCost: "1.350.000 Gs. / año",
-  licenseCostGs: 1350000,
+  licenseCost: "1.000.000 Gs. / año",
+  licenseCostGs: 1000000,
   licenseDuration: "12 meses",
   licenseStatus: "activado", // "activado" | "revocado" | "anulado" | "vencido"
   licenseActivatedAt: "2026-03-01T12:00:00.000Z",
   licenseExpiresAt: "2027-03-01T12:00:00.000Z",
   licenseNotes: "Licencia Anual con soporte y actualización oficial",
 };
+
+// Portadas temáticas prediseñadas de alta calidad para el Demo de la Aplicación
+export const DEMO_BANNER_PRESETS = [
+  {
+    id: "menupy",
+    title: "Menu Py - Oficial",
+    desc: "Flyer e imagen oficial de Menu Py",
+    url: "/Flyers-MenuPY.png",
+    badge: "Predeterminado",
+    emoji: "⭐",
+  },
+  {
+    id: "rotiseria",
+    title: "Rotisería Tradicional & Minutas",
+    desc: "Comidas caseras, milanesas y empanadas",
+    url: "/banner.jpg",
+    badge: "Rotisería",
+    emoji: "🍗",
+  },
+  {
+    id: "burger",
+    title: "Burger House & Fast Food",
+    desc: "Hamburguesas gourmet y papas rústicas",
+    url: "https://images.unsplash.com/photo-1550547660-d9450f859349?auto=format&fit=crop&w=1400&q=80",
+    badge: "Gourmet",
+    emoji: "🍔",
+  },
+  {
+    id: "pizza",
+    title: "Pizzería Artesanal a la Leña",
+    desc: "Pizzas crujientes con mozzarella y albahaca",
+    url: "https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=1400&q=80",
+    badge: "Italiana",
+    emoji: "🍕",
+  },
+  {
+    id: "parrilla",
+    title: "Parrillada & Asado Criollo",
+    desc: "Cortes a las brasas y picadas completas",
+    url: "https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=1400&q=80",
+    badge: "Brasas",
+    emoji: "🥩",
+  },
+  {
+    id: "cafe",
+    title: "Cafetería, Bakery & Desayunos",
+    desc: "Café de especialidad, medialunas y tortas",
+    url: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1400&q=80",
+    badge: "Café & Bakery",
+    emoji: "☕",
+  },
+  {
+    id: "pastas",
+    title: "Pastas Frescas & Ristorante",
+    desc: "Tallarines artesanales con estofado casero",
+    url: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=1400&q=80",
+    badge: "Pastas",
+    emoji: "🍝",
+  },
+  {
+    id: "sushi",
+    title: "Sushi & Cocina Oriental",
+    desc: "Rolls frescos, sashimi y combinados",
+    url: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?auto=format&fit=crop&w=1400&q=80",
+    badge: "Sushi",
+    emoji: "🍣",
+  },
+  {
+    id: "promocional",
+    title: "Flyer Promocional Menú Digital",
+    desc: "Diseño publicitario institucional para ventas",
+    url: "/Flyers-MenuPY.png",
+    badge: "Flyer App",
+    emoji: "📱",
+  },
+];
 
 const DEFAULT_MENU = [
   {
@@ -700,7 +778,7 @@ function compressImage(file, maxSize = 360, quality = 0.65) {
   });
 }
 
-function compressBannerImage(file, maxWidth = 1200, maxHeight = 500, quality = 0.82) {
+function compressBannerImage(file, maxWidth = 1440, maxHeight = 650, quality = 0.84) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("No se pudo leer el archivo"));
@@ -1332,6 +1410,14 @@ export default function App() {
     } catch (e) {}
     return "owner";
   }); // "superadmin" | "owner" | "staff"
+
+  // Restricción de seguridad estricta: El personal operativo solo puede estar en Pedidos y Cocina
+  useEffect(() => {
+    if (adminRole === "staff" && adminTab !== "orders") {
+      setAdminTab("orders");
+    }
+  }, [adminRole, adminTab]);
+
   const [loginMode, setLoginMode] = useState("owner"); // "owner" | "staff" | "superadmin"
   const [userInput, setUserInput] = useState("");
   const [pinInput, setPinInput] = useState("");
@@ -1351,35 +1437,74 @@ export default function App() {
     }
   });
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleLicenseModal, setGoogleLicenseModal] = useState(null); // { email, displayName, uid, photoURL }
+  const [bindLicenseCode, setBindLicenseCode] = useState("");
+  const [bindLicenseError, setBindLicenseError] = useState("");
+  const [bindLicenseLoading, setBindLicenseLoading] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthChange(async (user) => {
       if (user) {
-        setGoogleUser(user);
-        try { sessionStorage.setItem("caserita_google_user", JSON.stringify(user)); } catch {}
-        if (user.uid) {
-          try { sessionStorage.setItem("caserita_auth_google_uid", user.uid); } catch {}
-          try {
-            const profile = await getUserProfileFromFirestore(user.uid);
-            if (profile) {
-              const isSuper = user.email === "mecanicadakar@gmail.com" || user.email?.includes("admin");
-              const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
-              const userBanner = profile.bannerImage || defaultBanner;
-              const loadedUserBiz = {
-                name: profile.businessName || (isSuper ? "MenuPY - Portal Administrador" : `Comercio de ${user.displayName || user.email}`),
-                slogan: profile.slogan || (isSuper ? "Llevá tu negocio al siguiente nivel - Menús digitales" : "Pedí online - Calidad y sabor"),
-                bannerImage: userBanner,
-                phoneIntl: profile.phoneIntl || "",
-                phoneDisplay: profile.phoneDisplay || "",
-                address: profile.address || "Encarnación, Paraguay",
-                deliveryNote: profile.deliveryNote || "El costo de envío se coordina según la zona",
-                adminUser: user.email,
-              };
-              setBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
-              setDraftBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
+        const isSuper = user.email === "mecanicadakar@gmail.com";
+        const hasAdminRole = sessionStorage.getItem("caserita_auth_role");
+        
+        // Solo cargar datos si el usuario tiene una sesión de administración autorizada
+        if (isSuper || hasAdminRole) {
+          setGoogleUser(user);
+          try { sessionStorage.setItem("caserita_google_user", JSON.stringify(user)); } catch {}
+          if (user.uid) {
+            try { sessionStorage.setItem("caserita_auth_google_uid", user.uid); } catch {}
+          }
+
+          if (isSuper) {
+            // Para el Administrador General, cargar los datos y portada configurados del Demo Oficial (losamigos)
+            try {
+              const demoStoreDoc = await getStoreProfileFromFirestore("losamigos");
+              if (demoStoreDoc && demoStoreDoc.name) {
+                const demoBiz = {
+                  name: demoStoreDoc.name,
+                  slogan: demoStoreDoc.slogan || "Pedí online - Comidas caseras y minutas",
+                  bannerImage: demoStoreDoc.bannerImage || "/banner.jpg",
+                  phoneIntl: demoStoreDoc.phoneIntl || "595981456789",
+                  phoneDisplay: demoStoreDoc.phoneDisplay || "0981 123 456",
+                  address: demoStoreDoc.address || "Santa María III, Ruta 6ta km 3.5, Encarnación",
+                  deliveryNote: demoStoreDoc.deliveryNote || "El costo de envío se coordina según la zona",
+                  adminUser: "usuario",
+                  isDemoStore: true,
+                };
+                setBusiness((prev) => ({ ...prev, ...demoBiz }));
+                setDraftBusiness((prev) => ({ ...prev, ...demoBiz }));
+                if (demoStoreDoc.menu && demoStoreDoc.menu.length > 0) {
+                  setMenu(demoStoreDoc.menu);
+                  setDraft(demoStoreDoc.menu);
+                }
+              }
+            } catch (e) {
+              console.warn("Aviso al cargar demo store en onAuthChange:", e);
             }
-          } catch (e) {
-            console.warn("No se pudo cargar perfil individual de Firestore:", e);
+          } else if (hasAdminRole && user.uid) {
+            try {
+              const profile = await getUserProfileFromFirestore(user.uid);
+              if (profile && profile.licenseStatus === "activado") {
+                const userBanner = profile.bannerImage || "/banner.jpg";
+                const loadedUserBiz = {
+                  name: profile.businessName || `Comercio de ${user.displayName || user.email}`,
+                  slogan: profile.slogan || "Pedí online - Calidad y sabor",
+                  bannerImage: userBanner,
+                  phoneIntl: profile.phoneIntl || "",
+                  phoneDisplay: profile.phoneDisplay || "",
+                  address: profile.address || "Encarnación, Paraguay",
+                  deliveryNote: profile.deliveryNote || "El costo de envío se coordina según la zona",
+                  adminUser: user.email,
+                  licenseCode: profile.licenseCode || null,
+                  licenseStatus: profile.licenseStatus || null,
+                };
+                setBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
+                setDraftBusiness((prev) => ({ ...prev, ...loadedUserBiz }));
+              }
+            } catch (e) {
+              console.warn("No se pudo cargar perfil individual de Firestore:", e);
+            }
           }
         }
       }
@@ -1388,6 +1513,10 @@ export default function App() {
   }, []);
 
   const handleGoogleSignIn = async () => {
+    if (loginMode === "staff") {
+      setPinError("El personal operativo (mozos y cocina) no utiliza acceso con Google. Ingresá con tu Nombre y PIN de 4 dígitos.");
+      return;
+    }
     setGoogleLoading(true);
     setPinError("");
     try {
@@ -1399,66 +1528,354 @@ export default function App() {
         return;
       }
       const gUser = res.user;
-      setGoogleUser(gUser);
-      try {
-        sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
-        sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
-      } catch {}
 
-      // Enviar al backend para vincular o autenticar tienda
-      const resp = await fetch(SHEETS_API_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "googleLogin",
-          email: gUser.email,
-          name: gUser.displayName,
-          uid: gUser.uid,
-          photoURL: gUser.photoURL,
-        }),
-      });
-      const data = await resp.json();
-      if (data.ok) {
-        const isSuper = data.role === "superadmin" || gUser.email === "mecanicadakar@gmail.com";
-        const defaultBanner = isSuper ? "/Flyers-MenuPY.png" : "/banner.jpg";
+      // 1. Acceso Exclusivo para Administrador General Maestro (Superadmin)
+      const isMasterGoogle = gUser.email === "mecanicadakar@gmail.com";
+      if (isMasterGoogle) {
+        setGoogleUser(gUser);
+        try {
+          sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
+          sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
+          sessionStorage.setItem("caserita_auth_user", gUser.email);
+          sessionStorage.setItem("caserita_auth_pin", "google-auth");
+          sessionStorage.setItem("caserita_auth_role", "superadmin");
+          sessionStorage.setItem("caserita_auth_store_id", "losamigos");
+        } catch {}
 
-        // Combinar datos del perfil único de Firestore si existen
-        if (data.business) {
-          data.business = {
-            ...data.business,
-            name: gUser.profile?.businessName || data.business.name,
-            slogan: gUser.profile?.slogan || data.business.slogan,
-            bannerImage: gUser.profile?.bannerImage || data.business.bannerImage || defaultBanner,
-            phoneIntl: gUser.profile?.phoneIntl || data.business.phoneIntl,
-            phoneDisplay: gUser.profile?.phoneDisplay || data.business.phoneDisplay,
-            address: gUser.profile?.address || data.business.address,
-            deliveryNote: gUser.profile?.deliveryNote || data.business.deliveryNote,
-          };
-        }
+        let masterStoreData = null;
+        try {
+          const resp = await fetch(SHEETS_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "googleLogin",
+              email: gUser.email,
+              name: gUser.displayName,
+              uid: gUser.uid,
+              photoURL: gUser.photoURL,
+            }),
+          });
+          masterStoreData = await resp.json();
+        } catch {}
 
         setIpLocked(false);
         setIpRemainingSeconds(0);
         setAttemptsLeft(5);
         fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
-        sessionStorage.setItem("caserita_auth_user", gUser.email);
-        sessionStorage.setItem("caserita_auth_pin", "google-auth");
-        sessionStorage.setItem("caserita_auth_role", data.role || "owner");
-        if (data.storeId) {
-          sessionStorage.setItem("caserita_auth_store_id", data.storeId);
-        }
-        enterAdmin(data.role || "owner", gUser.email, "google-auth", null, data);
+        enterAdmin("superadmin", gUser.email, "google-auth", null, masterStoreData);
         addToast(
           "order_success",
-          `¡Bienvenido, ${gUser.displayName}!`,
-          `Perfil único y configuraciones cargadas con tu cuenta de Google (${gUser.email}).`
+          `¡Bienvenido, Administrador General!`,
+          `Acceso total maestro concedido a MenuPY (${gUser.email}).`
         );
-      } else {
-        setPinError(data.error || "No se pudo acceder con esta cuenta de Google.");
+        return;
       }
+
+      // 2. Para todos los demás usuarios de Google: VERIFICAR LICENCIA ACTIVA OBLIGATORIA
+      let licenseVerified = false;
+      let storeData = null;
+
+      // a) Verificar con el backend
+      try {
+        const resp = await fetch(SHEETS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "googleLogin",
+            email: gUser.email,
+            name: gUser.displayName,
+            uid: gUser.uid,
+            photoURL: gUser.photoURL,
+          }),
+        });
+        const data = await resp.json();
+        if (data.ok && data.role === "owner" && data.license) {
+          licenseVerified = true;
+          storeData = data;
+        } else if (data.isPendingApproval) {
+          setPinError(data.error || `Acceso denegado: Tu comercio (${gUser.email}) se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez otorgada la licencia.`);
+          signOut(auth).catch(() => {});
+          sessionStorage.removeItem("caserita_google_user");
+          sessionStorage.removeItem("caserita_auth_google_uid");
+          setGoogleUser(null);
+          return;
+        } else if (data.licenseBlocked) {
+          setPinError(data.error || "La licencia de este comercio se encuentra suspendida o revocada.");
+          signOut(auth).catch(() => {});
+          sessionStorage.removeItem("caserita_google_user");
+          sessionStorage.removeItem("caserita_auth_google_uid");
+          setGoogleUser(null);
+          return;
+        }
+      } catch (err) {
+        console.warn("Backend offline al verificar licencia de Google:", err);
+      }
+
+      // b) Si el backend no confirmó o está offline, verificar perfil en Firestore
+      if (!licenseVerified) {
+        try {
+          const profile = await getUserProfileFromFirestore(gUser.uid);
+          if (profile && profile.licenseCode && (profile.licenseStatus === "activado" || profile.licenseStatus === "activo")) {
+            licenseVerified = true;
+            storeData = {
+              storeId: profile.storeId || `store_${gUser.uid}`,
+              role: "owner",
+              business: {
+                name: profile.businessName || `Comercio de ${gUser.displayName || gUser.email}`,
+                slogan: profile.slogan || "Pedí online - Calidad y sabor",
+                bannerImage: profile.bannerImage || "/banner.jpg",
+                phoneIntl: profile.phoneIntl || "",
+                phoneDisplay: profile.phoneDisplay || "",
+                address: profile.address || "Encarnación, Paraguay",
+                deliveryNote: profile.deliveryNote || "El costo de envío se coordina según la zona",
+                adminUser: gUser.email,
+                licenseCode: profile.licenseCode,
+                licensePlan: profile.licensePlan || "Plan Anual PRO",
+                licenseStatus: "activado",
+              },
+              license: {
+                code: profile.licenseCode,
+                plan: profile.licensePlan || "Plan Anual PRO",
+                status: "activado",
+              },
+            };
+          }
+        } catch (e) {}
+      }
+
+      // c) Verificar en códigos locales de activación
+      if (!licenseVerified) {
+        const localCode = activationCodes.find(
+          (c) => c.email && c.email.toLowerCase() === gUser.email.toLowerCase() && c.status === "activado"
+        );
+        if (localCode) {
+          licenseVerified = true;
+          storeData = {
+            storeId: `store_${gUser.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "").toLowerCase()}`,
+            role: "owner",
+            business: {
+              name: localCode.businessName || `Comercio de ${gUser.displayName || gUser.email}`,
+              slogan: "Pedí online - Calidad y sabor",
+              bannerImage: "/banner.jpg",
+              phoneIntl: localCode.whatsapp || "",
+              phoneDisplay: "",
+              address: "Encarnación, Paraguay",
+              deliveryNote: "El costo de envío se coordina según la zona",
+              adminUser: gUser.email,
+              licenseCode: localCode.code,
+              licensePlan: localCode.plan,
+              licenseStatus: "activado",
+            },
+            license: {
+              code: localCode.code,
+              plan: localCode.plan,
+              status: "activado",
+            },
+          };
+        }
+      }
+
+      // 3. SI TIENE LICENCIA ACTIVA VINCULADA: CONCEDER ACCESO COMO GERENTE
+      if (licenseVerified && storeData) {
+        setGoogleUser(gUser);
+        try {
+          sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
+          sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
+          sessionStorage.setItem("caserita_auth_user", gUser.email);
+          sessionStorage.setItem("caserita_auth_pin", "google-auth");
+          sessionStorage.setItem("caserita_auth_role", "owner");
+          if (storeData.storeId) {
+            sessionStorage.setItem("caserita_auth_store_id", storeData.storeId);
+          }
+        } catch {}
+
+        setIpLocked(false);
+        setIpRemainingSeconds(0);
+        setAttemptsLeft(5);
+        fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+        enterAdmin("owner", gUser.email, "google-auth", null, storeData);
+        addToast(
+          "order_success",
+          `¡Bienvenido, ${gUser.displayName || "Gerente"}!`,
+          `Licencia activa verificada (${storeData.license?.code || storeData.business?.licenseCode || "Autorizada"}).`
+        );
+        return;
+      }
+
+      // 4. SI NO ESTÁ VINCULADO A NINGUNA LICENCIA: BLOQUEAR ACCESO Y ABRIR MODAL
+      // Desconectar sesión temporal para impedir cualquier acceso no autorizado
+      signOut(auth).catch(() => {});
+      sessionStorage.removeItem("caserita_google_user");
+      sessionStorage.removeItem("caserita_auth_google_uid");
+      setGoogleUser(null);
+
+      setGoogleLicenseModal({
+        email: gUser.email,
+        displayName: gUser.displayName || gUser.email,
+        uid: gUser.uid,
+        photoURL: gUser.photoURL,
+      });
+      setBindLicenseCode("");
+      setBindLicenseError("");
     } catch (e) {
       setPinError("Error de conexión al conectar con Google.");
     } finally {
       setGoogleLoading(false);
+    }
+  };
+
+  const handleBindGoogleLicense = async () => {
+    const cleanCode = bindLicenseCode.trim().toUpperCase();
+    if (!cleanCode) {
+      setBindLicenseError("Por favor ingresá un código de licencia.");
+      return;
+    }
+    if (!googleLicenseModal) return;
+    setBindLicenseLoading(true);
+    setBindLicenseError("");
+
+    try {
+      let backendSuccess = false;
+      let backendData = null;
+
+      // 1. Validar primero con backend
+      try {
+        const resp = await fetch(SHEETS_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "googleLogin",
+            email: googleLicenseModal.email,
+            name: googleLicenseModal.displayName,
+            uid: googleLicenseModal.uid,
+            photoURL: googleLicenseModal.photoURL,
+            licenseCode: cleanCode,
+          }),
+        });
+        backendData = await resp.json();
+        if (backendData.ok) {
+          backendSuccess = true;
+        } else {
+          setBindLicenseError(backendData.error || "El código de licencia ingresado no es válido o ya fue utilizado.");
+          setBindLicenseLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Backend offline al vincular licencia, validando con registro local:", err);
+      }
+
+      // 2. Si backend no respondió, validar contra activationCodes locales
+      let matchedCode = null;
+      if (!backendSuccess) {
+        matchedCode = activationCodes.find(
+          (c) => c.code && c.code.toUpperCase() === cleanCode
+        );
+
+        if (!matchedCode) {
+          setBindLicenseError(`El código de licencia "${cleanCode}" no existe en el sistema.`);
+          setBindLicenseLoading(false);
+          return;
+        }
+
+        if (matchedCode.status === "activado" && matchedCode.email && matchedCode.email.toLowerCase() !== googleLicenseModal.email.toLowerCase()) {
+          setBindLicenseError(`Este código de licencia ya está vinculado a otra cuenta (${matchedCode.email}).`);
+          setBindLicenseLoading(false);
+          return;
+        }
+
+        if (matchedCode.status === "revocado" || matchedCode.status === "bloqueado" || matchedCode.status === "anulado") {
+          setBindLicenseError("Esta licencia se encuentra revocada o suspendida por administración.");
+          setBindLicenseLoading(false);
+          return;
+        }
+      }
+
+      // 3. Activar el código localmente
+      const activatedCodeObj = backendData?.license || matchedCode;
+      setActivationCodes((prev) => {
+        const next = prev.map((c) => {
+          if (c.code && c.code.toUpperCase() === cleanCode) {
+            return {
+              ...c,
+              status: "activado",
+              activatedAt: new Date().toISOString(),
+              activatedBy: `${googleLicenseModal.displayName} (${googleLicenseModal.email})`,
+              email: googleLicenseModal.email,
+            };
+          }
+          return c;
+        });
+        try { localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      // 4. Guardar perfil completo en Firestore con la licencia vinculada
+      const userStoreId = backendData?.storeId || `store_${googleLicenseModal.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "").toLowerCase()}`;
+      const userBiz = {
+        name: (backendData?.business?.name) || (activatedCodeObj?.businessName) || `Comercio de ${googleLicenseModal.displayName}`,
+        slogan: backendData?.business?.slogan || "Pedí online - Calidad y sabor",
+        bannerImage: backendData?.business?.bannerImage || "/banner.jpg",
+        phoneIntl: (backendData?.business?.phoneIntl) || (activatedCodeObj?.whatsapp) || "",
+        phoneDisplay: backendData?.business?.phoneDisplay || "",
+        address: backendData?.business?.address || "Encarnación, Paraguay",
+        deliveryNote: backendData?.business?.deliveryNote || "El costo de envío se coordina según la zona",
+        adminUser: googleLicenseModal.email,
+        licenseCode: cleanCode,
+        licensePlan: backendData?.license?.plan || activatedCodeObj?.plan || "Plan Anual PRO",
+        licenseStatus: "activado",
+        licenseCost: backendData?.license?.costFormatted || activatedCodeObj?.costFormatted || "1.000.000 Gs. / año",
+        storeId: userStoreId,
+        role: "owner",
+      };
+
+      try {
+        await saveUserProfileToFirestore(googleLicenseModal.uid, userBiz);
+      } catch (e) {
+        console.warn("No se pudo guardar perfil en Firestore:", e);
+      }
+
+      // 5. Configurar sesión activa y dar acceso
+      const finalStoreData = backendData?.ok ? backendData : {
+        storeId: userStoreId,
+        role: "owner",
+        business: userBiz,
+        menu: DEFAULT_MENU,
+        orders: [],
+        license: {
+          code: cleanCode,
+          plan: userBiz.licensePlan,
+          status: "activado",
+        }
+      };
+
+      const finalGUser = {
+        uid: googleLicenseModal.uid,
+        email: googleLicenseModal.email,
+        displayName: googleLicenseModal.displayName,
+        photoURL: googleLicenseModal.photoURL,
+      };
+
+      setGoogleUser(finalGUser);
+      sessionStorage.setItem("caserita_google_user", JSON.stringify(finalGUser));
+      sessionStorage.setItem("caserita_auth_google_uid", googleLicenseModal.uid);
+      sessionStorage.setItem("caserita_auth_user", googleLicenseModal.email);
+      sessionStorage.setItem("caserita_auth_pin", "google-auth");
+      sessionStorage.setItem("caserita_auth_role", "owner");
+      sessionStorage.setItem("caserita_auth_store_id", userStoreId);
+
+      setGoogleLicenseModal(null);
+      setBindLicenseCode("");
+      enterAdmin("owner", googleLicenseModal.email, "google-auth", null, finalStoreData);
+
+      addToast(
+        "order_success",
+        "¡Licencia Vinculada con Éxito!",
+        `Tu cuenta de Google (${googleLicenseModal.email}) fue vinculada a tu licencia ${cleanCode}. ¡Bienvenido a tu panel de Gerente!`
+      );
+    } catch (e) {
+      setBindLicenseError("Error al procesar la vinculación de licencia.");
+    } finally {
+      setBindLicenseLoading(false);
     }
   };
 
@@ -1590,7 +2007,7 @@ export default function App() {
     return [
       {
         id: "CLI-DEMO-01",
-        businessName: "Rotisería Los Amigos (Demo)",
+        businessName: "Menu Py (Demo)",
         rubro: "Gastronomía",
         ownerName: "Carlos Benítez",
         whatsapp: "0981 123 456",
@@ -1714,14 +2131,14 @@ export default function App() {
       {
         id: "ACT-101",
         code: "CAS-7K9B-X2M4",
-        businessName: "Rotisería Los Amigos",
+        businessName: "Menu Py",
         ownerName: "Carlos González",
         whatsapp: "595981456789",
         plan: "Plan Anual PRO (1 Año)",
         status: "activado",
         createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
         activatedAt: new Date(Date.now() - 3600000 * 20).toISOString(),
-        activatedBy: "Carlos González (Rotisería Los Amigos)",
+        activatedBy: "Carlos González (Menu Py)",
         notes: "Licencia Anual con soporte y actualización",
       },
       {
@@ -1802,8 +2219,8 @@ export default function App() {
 
   const [newCodeForm, setNewCodeForm] = useState(() => {
     const plans = Array.isArray(DEFAULT_APP_PRICING_PLANS) && DEFAULT_APP_PRICING_PLANS.length > 0 ? DEFAULT_APP_PRICING_PLANS : [];
-    const def = plans[0] || { id: "mensual", title: "Plan Mensual", priceGs: 150000 };
-    const pNum = Number(def.priceGs) || 150000;
+    const def = plans[0] || { id: "mensual", title: "Plan Mensual", priceGs: 100000 };
+    const pNum = Number(def.priceGs) || 100000;
     const exp = new Date();
     exp.setMonth(exp.getMonth() + 1);
 
@@ -1811,6 +2228,7 @@ export default function App() {
       code: "CAS-" + Math.floor(1000 + Math.random() * 9000) + "-7K3X",
       businessName: "",
       ownerName: "",
+      email: "",
       whatsapp: "",
       plan: def.title,
       planId: def.id,
@@ -1831,10 +2249,10 @@ export default function App() {
     return {
       isActivated: true,
       code: "CAS-7K9B-X2M4",
-      businessName: "Rotisería Los Amigos",
+      businessName: "Menu Py",
       plan: "Plan Anual PRO (1 Año)",
-      costFormatted: "1.350.000 Gs. / año",
-      costGs: 1350000,
+      costFormatted: "1.000.000 Gs. / año",
+      costGs: 1000000,
       durationMonths: 12,
       status: "activado", // "activado" | "revocado" | "anulado" | "vencido"
       activatedAt: "2026-03-01T12:00:00.000Z",
@@ -1868,11 +2286,32 @@ export default function App() {
     requestedPassword: "",
     confirmPassword: "",
     plan: "anual",
-    planTitle: "Plan Anual PRO (Ahorrá 3 meses)",
-    amountGs: 1350000,
+    planTitle: "Plan Anual PRO (1.000.000 Gs.)",
+    amountGs: 1000000,
     paymentMethod: "transferencia",
     paymentRef: "",
   });
+
+  // Sincronizar automáticamente el precio y título del plan seleccionado en regForm con appPricingPlans
+  useEffect(() => {
+    if (!Array.isArray(appPricingPlans) || appPricingPlans.length === 0) return;
+    const currentId = regForm.plan || "anual";
+    const matched = appPricingPlans.find((p) => p.id === currentId) || appPricingPlans.find((p) => p.id === "anual") || appPricingPlans[0];
+    if (matched) {
+      const displayPrice = matched.priceFormatted || `${Number(matched.priceGs).toLocaleString("es-PY")} Gs.`;
+      setRegForm((prev) => {
+        if (prev.amountGs === matched.priceGs && prev.plan === matched.id && prev.planTitle === `${matched.title} (${displayPrice})`) {
+          return prev;
+        }
+        return {
+          ...prev,
+          plan: matched.id,
+          planTitle: `${matched.title} (${displayPrice})`,
+          amountGs: matched.priceGs,
+        };
+      });
+    }
+  }, [appPricingPlans]);
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regSubmitting, setRegSubmitting] = useState(false);
   const [regError, setRegError] = useState("");
@@ -1893,6 +2332,8 @@ export default function App() {
   const bannerFileInputRef = useRef(null);
   const [bannerUploading, setBannerUploading] = useState(false);
   const [bannerUploadError, setBannerUploadError] = useState("");
+  const [bannerPreviewDevice, setBannerPreviewDevice] = useState("pc"); // "pc" | "mobile"
+  const [selectedAdminStoreId, setSelectedAdminStoreId] = useState("losamigos"); // "losamigos" | custom store
 
   const [imgLoading, setImgLoading] = useState(null);
   const [imgError, setImgError] = useState("");
@@ -2809,35 +3250,49 @@ export default function App() {
       if (user) sessionStorage.setItem("caserita_auth_user", user);
       if (pin) sessionStorage.setItem("caserita_auth_pin", pin);
       sessionStorage.setItem("caserita_auth_role", role);
-      if (storeData?.storeId) {
-        sessionStorage.setItem("caserita_auth_store_id", storeData.storeId);
-      }
+
+      const effectiveStoreId = storeData?.storeId || sessionStorage.getItem("caserita_auth_store_id") || currentStoreId || "losamigos";
+      sessionStorage.setItem("caserita_auth_store_id", effectiveStoreId);
 
       let activeStoreBusiness;
       if (role === "superadmin") {
         activeStoreBusiness = {
-          name: "MenuPY - Portal Administrador",
-          slogan: "Llevá tu negocio al siguiente nivel - Menús digitales",
-          phoneIntl: "595981456789",
-          phoneDisplay: "0981 123 456",
-          address: "Encarnación, Paraguay",
-          bannerImage: storeData?.business?.bannerImage || "/Flyers-MenuPY.png",
-          deliveryNote: "Plataforma oficial de menús digitales",
+          ...DEFAULT_BUSINESS,
+          ...(storeData?.business || {}),
+          bannerImage: storeData?.business?.bannerImage || business.bannerImage || DEFAULT_BUSINESS.bannerImage,
           adminUser: "usuario",
           isPortalAdmin: true,
+          isDemoStore: true,
+        };
+      } else if (role === "staff") {
+        // ACCESO DE PERSONAL (Mozos, Cocina, Personal operativo, ej: Camila)
+        // REGLA CRÍTICA: NUNCA cambiar el nombre del comercio por el nombre de la persona que se loguea (ej. Camila).
+        // El comercio mantiene su nombre ("Menu Py", etc.), portada y configuración actual intacta.
+        activeStoreBusiness = {
+          ...DEFAULT_BUSINESS,
+          ...(business || {}),
+          ...(storeData?.business || {}),
+          name: (storeData?.business?.name) || (business?.name && !business.name.startsWith("Comercio ")) || DEFAULT_BUSINESS.name,
+          bannerImage: storeData?.business?.bannerImage || business?.bannerImage || DEFAULT_BUSINESS.bannerImage,
         };
       } else if (storeData?.business) {
         activeStoreBusiness = {
           ...DEFAULT_BUSINESS,
           ...storeData.business,
-          bannerImage: storeData.business.bannerImage || "/banner.jpg",
+          bannerImage: storeData.business.bannerImage || business?.bannerImage || "/banner.jpg",
         };
       } else {
+        // Para cualquier otro login sin storeData explícito, preservar el nombre del comercio existente en lugar de poner "Comercio <user>"
+        const currentName = (business?.name && !business.name.startsWith("Comercio ") && business.name !== "Mi Comercio")
+          ? business.name
+          : DEFAULT_BUSINESS.name;
+
         activeStoreBusiness = {
           ...DEFAULT_BUSINESS,
-          name: user ? `Comercio ${user}` : "Mi Comercio",
-          bannerImage: "/banner.jpg",
-          adminUser: user || "gerente",
+          ...(business || {}),
+          name: currentName,
+          bannerImage: business?.bannerImage || "/banner.jpg",
+          adminUser: (user && user.toLowerCase() !== "gerente" && user.toLowerCase() !== "personal") ? user : (business?.adminUser || "gerente"),
         };
       }
 
@@ -2846,7 +3301,7 @@ export default function App() {
 
       const activeStoreMenu = (storeData?.menu && storeData.menu.length > 0)
         ? storeData.menu
-        : (role === "superadmin" ? [] : DEFAULT_MENU);
+        : (Array.isArray(menu) && menu.length > 0 ? menu : DEFAULT_MENU);
 
       setMenu(activeStoreMenu);
       setDraft(activeStoreMenu);
@@ -2863,7 +3318,7 @@ export default function App() {
         active: true,
         role, // "superadmin" | "owner" | "staff"
         user: user || (role === "superadmin" ? "Administrador" : role === "staff" ? "Personal" : (activeStoreBusiness.adminUser || "Gerente")),
-        storeId: storeData?.storeId || sessionStorage.getItem("caserita_auth_store_id") || "losamigos",
+        storeId: effectiveStoreId,
         staffMember: staffMemberData,
         loggedInAt: new Date().toISOString(),
         lastActiveAt: new Date().toISOString(),
@@ -2878,8 +3333,12 @@ export default function App() {
       setDraftNewPin("");
       setDraftPinConfirm("");
       setDirty(false);
-      setAdminTab("orders");
-      setView("admin");
+      if (role === "staff" && staffMemberData?.allowTakeOrders && !staffMemberData?.allowKitchenPanel) {
+        setView("menu");
+      } else {
+        setAdminTab("orders");
+        setView("admin");
+      }
       loadOrders();
       if (role === "superadmin") {
         loadRegisteredClients();
@@ -3189,39 +3648,17 @@ export default function App() {
     setVerifying(true);
     setPinError("");
 
-    // Verificación si el personal intentó ingresar desde el modo Gerente
-    const staffByPin = Array.isArray(staffSettings.staffList)
-      ? staffSettings.staffList.find((s) => s.pin === cleanPin)
-      : null;
-
-    if (
-      (cleanUser.toLowerCase() === "personal" || cleanUser.toLowerCase() === "mozo" || cleanUser.toLowerCase() === "cocina" || staffByPin) &&
-      (cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234" || staffByPin)
-    ) {
-      if (!staffSettings.enabled) {
-        setPinError("El acceso para personal está deshabilitado por el Gerente.");
-        setVerifying(false);
-        return;
-      }
-      setVerifying(false);
-      const staffObj = staffByPin || {
-        id: "general",
-        name: cleanUser.toLowerCase() !== "gerente" && cleanUser ? cleanUser : "Personal",
-        pin: cleanPin,
-        allowTakeOrders: staffSettings.allowTakeOrders ?? true,
-        allowKitchenPanel: staffSettings.allowKitchenPanel ?? true,
-        allowCashier: staffSettings.allowCashier ?? false,
-        active: true,
-      };
-      enterAdmin("staff", staffObj.name, cleanPin, staffObj);
-      addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste en Modo Personal.");
-      return;
-    }
+    // 1. Verificación de Clientes Registrados en la base de datos local
+    const registeredMatch = (registeredClients || []).find(
+      (c) => (c.requestedUser || c.requested_user || "").toLowerCase() === cleanUser.toLowerCase() &&
+             (c.requestedPassword || c.requested_password || "") === cleanPin
+    );
 
     // 2. Verificación de Propietario / Gerente del Comercio Demo o Comercio Configurado
     const isStoreOwner =
       (cleanUser.toLowerCase() === "gerente" ||
        cleanUser.toLowerCase() === "comercio" ||
+       cleanUser.toLowerCase() === "menupy" ||
        cleanUser.toLowerCase() === "losamigos" ||
        cleanUser.toLowerCase() === "demo" ||
        cleanUser.toLowerCase() === (business.adminUser || "usuario").toLowerCase()) &&
@@ -3230,14 +3667,65 @@ export default function App() {
        cleanPin === (business.adminPin || "Ricaji270985#") ||
        cleanPin === "Ricaji270985#");
 
-    // 3. Verificación de Clientes Registrados en la base de datos local
-    const registeredMatch = (registeredClients || []).find(
-      (c) => (c.requestedUser || c.requested_user || "").toLowerCase() === cleanUser.toLowerCase() &&
-             (c.requestedPassword || c.requested_password || "") === cleanPin
-    );
+    // 3. Verificación si el personal intentó ingresar desde el modo General / Gerente
+    const staffByName = Array.isArray(staffSettings.staffList)
+      ? staffSettings.staffList.find(
+          (s) => (s.name || "").trim().toLowerCase() === cleanUser.toLowerCase() ||
+                 ((s.name || "").trim() && cleanUser.toLowerCase().includes((s.name || "").trim().toLowerCase())) ||
+                 ((s.name || "").trim() && (s.name || "").trim().toLowerCase().includes(cleanUser.toLowerCase()))
+        )
+      : null;
+
+    const staffByPin = Array.isArray(staffSettings.staffList)
+      ? staffSettings.staffList.find((s) => s.pin === cleanPin)
+      : null;
+
+    const isStaffAttempt =
+      cleanUser.toLowerCase() === "personal" ||
+      cleanUser.toLowerCase() === "mozo" ||
+      cleanUser.toLowerCase() === "cocina" ||
+      Boolean(staffByName && ((staffByName.pin && staffByName.pin === cleanPin) || cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234")) ||
+      Boolean(staffByPin && (cleanUser.toLowerCase() === (staffByPin.name || "").toLowerCase() || !cleanUser || cleanUser.toLowerCase() === "personal")) ||
+      (!isMasterUser && !isStoreOwner && !registeredMatch && (cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234" || Boolean(staffByPin)));
+
+    if (isStaffAttempt) {
+      if (!staffSettings.enabled) {
+        setPinError("El acceso para personal está deshabilitado por el Gerente.");
+        setVerifying(false);
+        return;
+      }
+      setVerifying(false);
+      const staffObj = staffByName || staffByPin || {
+        id: "general",
+        name: (cleanUser.toLowerCase() !== "gerente" && cleanUser.toLowerCase() !== "admin" && cleanUser.toLowerCase() !== "comercio" && cleanUser) ? cleanUser : "Personal",
+        pin: cleanPin,
+        allowTakeOrders: staffSettings.allowTakeOrders ?? true,
+        allowKitchenPanel: staffSettings.allowKitchenPanel ?? true,
+        allowCashier: staffSettings.allowCashier ?? false,
+        active: true,
+      };
+
+      if (staffObj.active === false) {
+        setPinError(`El acceso para "${staffObj.name}" está desactivado por la Gerencia.`);
+        return;
+      }
+
+      enterAdmin("staff", staffObj.name, cleanPin, staffObj);
+      if (staffObj.allowTakeOrders && !staffObj.allowKitchenPanel) {
+        setView("menu");
+        addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste al Menú de Clientes para tomar comandas en mesas.");
+      } else {
+        setAdminTab("orders");
+        setView("admin");
+        addToast("order_success", `¡Hola, ${staffObj.name}!`, "Ingresaste en Modo Personal.");
+      }
+      return;
+    }
 
     const detectedRole = isMasterUser && isMasterPin ? "superadmin" : "owner";
-    const isValidLocalCredentials = (isMasterUser && isMasterPin) || isStoreOwner || !!registeredMatch;
+    const isRegisteredActive = registeredMatch && (registeredMatch.status === "activo" || registeredMatch.status === "activado");
+    const isRegisteredPending = registeredMatch && (registeredMatch.status === "pendiente" || registeredMatch.status === "pending");
+    const isValidLocalCredentials = (isMasterUser && isMasterPin) || isStoreOwner || isRegisteredActive;
 
     try {
       const res = await fetch(SHEETS_API_URL, {
@@ -3248,9 +3736,43 @@ export default function App() {
       const result = await res.json();
       if (result.clientIp) setClientIp(result.clientIp);
 
+      if (!result.ok) {
+        if (result.isPendingApproval) {
+          setPinError(result.error || `Acceso denegado: El usuario "${cleanUser}" se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez que el Administrador otorgue la licencia.`);
+          return;
+        }
+        if (result.licenseBlocked) {
+          const isRevoked = result.licenseStatus === "revocado" || result.licenseStatus === "anulado";
+          const blockedMsg = result.error || "⛔ Licencia suspendida o revocada.";
+          setPinError(blockedMsg);
+          setLicenseBlockedInfo({
+            isRevoked,
+            message: blockedMsg,
+            code: result.license?.code || "CAS-LICENCIA",
+            plan: result.license?.plan || "Plan Anual",
+            cost: "",
+            expiresAt: result.license?.expiresAt,
+          });
+          setShowLicenseBlockedModal(true);
+          return;
+        }
+        if (result.locked) {
+          setIpLocked(true);
+          setIpRemainingSeconds(result.remainingSeconds || 900);
+          setAttemptsLeft(0);
+          setPinError(result.error || "Acceso bloqueado: Has superado los 3 intentos fallidos permitidos.");
+          return;
+        }
+        if (result.attemptsLeft !== undefined) {
+          setAttemptsLeft(result.attemptsLeft);
+        }
+        setPinError(result.error || "Usuario o PIN incorrecto");
+        return;
+      }
+
       // Si no es Superadmin, verificar condición obligatoria de suscripción y licencia
-      const currentLicStatus = business.licenseStatus || appLicense.status || "activado";
-      const currentLicExpires = business.licenseExpiresAt || appLicense.expiresAt;
+      const currentLicStatus = result.license?.status || result.business?.licenseStatus || business.licenseStatus || appLicense.status || "activado";
+      const currentLicExpires = result.license?.expiresAt || result.business?.licenseExpiresAt || business.licenseExpiresAt || appLicense.expiresAt;
       const isLocalExpired = currentLicExpires ? (Date.now() > new Date(currentLicExpires).getTime()) : false;
       const isBlockedByLic = result.licenseBlocked || (currentLicStatus === "revocado" || currentLicStatus === "anulado" || isLocalExpired);
 
@@ -3265,8 +3787,8 @@ export default function App() {
         setLicenseBlockedInfo({
           isRevoked,
           message: blockedMsg,
-          code: business.licenseCode || appLicense.code || "CAS-7K9B-X2M4",
-          plan: business.licensePlan || appLicense.plan || "Plan Anual PRO (1 Año)",
+          code: result.license?.code || business.licenseCode || appLicense.code || "CAS-7K9B-X2M4",
+          plan: result.license?.plan || business.licensePlan || appLicense.plan || "Plan Anual PRO (1 Año)",
           cost: business.licenseCost || appLicense.costFormatted || "1.350.000 Gs. / año",
           expiresAt: currentLicExpires,
         });
@@ -3274,31 +3796,24 @@ export default function App() {
         return;
       }
 
-      if (result.ok || isValidLocalCredentials) {
-        setIpLocked(false);
-        setIpRemainingSeconds(0);
-        setAttemptsLeft(3);
-        fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
-        enterAdmin(detectedRole, cleanUser, cleanPin, null, result);
-      } else {
-        if (result.locked) {
-          setIpLocked(true);
-          setIpRemainingSeconds(result.remainingSeconds || 900);
-          setAttemptsLeft(0);
-          setPinError(result.error || "Acceso bloqueado: Has superado los 3 intentos fallidos permitidos.");
-        } else {
-          if (result.attemptsLeft !== undefined) {
-            setAttemptsLeft(result.attemptsLeft);
-          }
-          setPinError(result.error || "Usuario o PIN incorrecto");
-        }
-      }
+      setIpLocked(false);
+      setIpRemainingSeconds(0);
+      setAttemptsLeft(3);
+      fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+      enterAdmin(result.role || detectedRole, cleanUser, cleanPin, null, result);
     } catch {
-      if (isValidLocalCredentials) {
+      if (isMasterUser && isMasterPin) {
         setIpLocked(false);
         setIpRemainingSeconds(0);
         setAttemptsLeft(3);
-        enterAdmin(detectedRole);
+        enterAdmin("superadmin");
+      } else if (isRegisteredPending) {
+        setPinError(`Acceso denegado: El usuario "${cleanUser}" se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez que el Administrador otorgue la licencia.`);
+      } else if (isStoreOwner || isRegisteredActive) {
+        setIpLocked(false);
+        setIpRemainingSeconds(0);
+        setAttemptsLeft(3);
+        enterAdmin("owner");
       } else {
         setPinError("Usuario o PIN incorrecto. Revisá tus credenciales.");
       }
@@ -3510,6 +4025,7 @@ export default function App() {
           code: generateRandomActivationCode(),
           businessName: "",
           ownerName: "",
+          email: "",
           whatsapp: "",
           plan: defPlan.planTitle,
           planId: defPlan.planId,
@@ -3522,18 +4038,20 @@ export default function App() {
         addToast({
           type: "success",
           title: "Código Creado con Éxito",
-          message: `Código ${data.code.code} listo para entregar al comercio.`,
+          message: dataToSend.email ? `Licencia otorgada al email ${dataToSend.email} con código ${data.code.code}.` : `Código ${data.code.code} listo para entregar al comercio.`,
         });
       }
     } catch (err) {
       console.warn("Error creando código de activación:", err);
       // Fallback local en caso de error de red
       const pDetails = getPlanDetails(dataToSend.plan || dataToSend.planId);
+      const cleanEmail = (dataToSend.email || "").trim().toLowerCase();
       const fallbackCode = {
         id: "ACT-" + Date.now().toString().slice(-6),
         code: (dataToSend.code || generateRandomActivationCode()).toUpperCase().replace(/\s+/g, ""),
         businessName: dataToSend.businessName || "Venta Directa / Licencia Libre",
         ownerName: dataToSend.ownerName || "Responsable de Comercio",
+        email: cleanEmail,
         whatsapp: dataToSend.whatsapp || "",
         plan: dataToSend.plan || pDetails.planTitle,
         planId: dataToSend.planId || pDetails.planId,
@@ -3541,10 +4059,10 @@ export default function App() {
         costFormatted: dataToSend.costFormatted || pDetails.costFormatted,
         durationMonths: dataToSend.durationMonths || pDetails.durationMonths,
         expiresAt: dataToSend.expiresAt || pDetails.expiresAt,
-        status: "disponible",
+        status: cleanEmail ? "activado" : "disponible",
         createdAt: new Date().toISOString(),
-        activatedAt: null,
-        activatedBy: null,
+        activatedAt: cleanEmail ? new Date().toISOString() : null,
+        activatedBy: cleanEmail ? `${dataToSend.ownerName || "Comercio"} (${cleanEmail})` : null,
         notes: dataToSend.notes || "",
       };
       setActivationCodes((prev) => {
@@ -4571,10 +5089,18 @@ export default function App() {
       setRegError("Ingresá tu número de WhatsApp para pedidos y contacto.");
       return;
     }
-    if (!regForm.requestedUser.trim()) {
-      setRegError("Elegí un usuario para tu panel de administración.");
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const cleanRequestedUser = regForm.requestedUser.trim().toLowerCase();
+    if (!cleanRequestedUser) {
+      setRegError("Ingresá un correo electrónico en 'Usuario Deseado' para asociar tu licencia.");
       return;
     }
+    if (!emailRegex.test(cleanRequestedUser)) {
+      setRegError("En 'Usuario Deseado' solo se acepta un correo electrónico válido (ej: mi-comercio@gmail.com). El Administrador otorgará la licencia a este email y será el único autorizado a ingresar.");
+      return;
+    }
+
     if (!regForm.requestedPassword.trim()) {
       setRegError("Ingresá una contraseña para tu panel de administración.");
       return;
@@ -4595,9 +5121,9 @@ export default function App() {
           rubro: regForm.rubro,
           ownerName: regForm.ownerName,
           whatsapp: regForm.whatsapp,
-          email: regForm.email,
+          email: cleanRequestedUser,
           city: regForm.city,
-          requestedUser: regForm.requestedUser,
+          requestedUser: cleanRequestedUser,
           requestedPassword: regForm.requestedPassword,
           plan: regForm.plan,
           planTitle: regForm.planTitle,
@@ -4683,13 +5209,20 @@ export default function App() {
           role: currentRole,
           isGoogleAuth: isGoogleActive,
           googleUid: auth?.currentUser?.uid || "",
-          storeId: activeStoreId,
+          storeId: currentRole === "superadmin" ? (selectedAdminStoreId || "losamigos") : activeStoreId,
+          targetStoreId: currentRole === "superadmin" ? (selectedAdminStoreId || "losamigos") : undefined,
+          action: (currentRole === "superadmin" && (selectedAdminStoreId === "losamigos" || !selectedAdminStoreId)) ? "updateDemoStore" : undefined,
           menu: sanitizedMenu,
           deliveryNote: businessPayload.deliveryNote,
           business: businessPayload,
         }),
       });
-      let result = await res.json();
+      let result;
+      try {
+        result = await res.json();
+      } catch {
+        result = { ok: false, error: "Respuesta inesperada del servidor" };
+      }
 
       // Si por alguna razón la IP tenía intentos previos o falló por credenciales de sesión, desbloquear y reintentar
       if (!result.ok && (result.locked || res.status === 429 || res.status === 401)) {
@@ -4698,17 +5231,24 @@ export default function App() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user: activeUser || "gerente",
-            pin: activePin || "comercio123",
-            role: "owner",
+            user: activeUser || "usuario",
+            pin: activePin || "google-auth",
+            role: currentRole,
             isGoogleAuth: true,
-            storeId: activeStoreId,
+            googleUid: auth?.currentUser?.uid || "",
+            storeId: currentRole === "superadmin" ? (selectedAdminStoreId || "losamigos") : activeStoreId,
+            targetStoreId: currentRole === "superadmin" ? (selectedAdminStoreId || "losamigos") : undefined,
+            action: (currentRole === "superadmin" && (selectedAdminStoreId === "losamigos" || !selectedAdminStoreId)) ? "updateDemoStore" : undefined,
             menu: sanitizedMenu,
             deliveryNote: businessPayload.deliveryNote,
             business: businessPayload,
           }),
         });
-        result = await res.json();
+        try {
+          result = await res.json();
+        } catch {
+          result = { ok: false, error: "Error al procesar la respuesta del servidor" };
+        }
       }
 
       if (!result.ok) {
@@ -4723,7 +5263,7 @@ export default function App() {
           });
           setShowLicenseBlockedModal(true);
         } else {
-          setSaveError(result.error || "Error al guardar");
+          setSaveError(result.error || "No se pudo guardar la configuración.");
         }
         setSaving(false);
         setCartOpen(false);
@@ -4763,6 +5303,22 @@ export default function App() {
             storeId: result.storeId || activeStoreId,
           }).catch((fsErr) => console.warn("Aviso Firestore perfil:", fsErr));
         }
+
+        // Sincronizar también la tienda demo oficial en Firestore para visitantes (losamigos y menupy)
+        if (currentRole === "superadmin" || (result.storeId || activeStoreId) === "losamigos" || selectedAdminStoreId === "losamigos" || (result.storeId || activeStoreId) === "menupy") {
+          const demoStorePayload = {
+            name: businessPayload.name || "Menu Py",
+            slogan: businessPayload.slogan || "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
+            bannerImage: businessPayload.bannerImage || "/Flyers-MenuPY.png",
+            phoneIntl: businessPayload.phoneIntl,
+            phoneDisplay: businessPayload.phoneDisplay,
+            address: businessPayload.address,
+            deliveryNote: businessPayload.deliveryNote,
+            menu: sanitizedMenu,
+          };
+          saveStoreToFirestore("losamigos", demoStorePayload).catch((fsErr) => console.warn("Aviso Firestore demo store losamigos:", fsErr));
+          saveStoreToFirestore("menupy", demoStorePayload).catch((fsErr) => console.warn("Aviso Firestore demo store menupy:", fsErr));
+        }
       } catch (e) {}
 
       if (businessPayload.sessionPersistence) {
@@ -4793,8 +5349,10 @@ export default function App() {
 
       addToast(
         "order_success",
-        "¡Datos Guardados con Éxito!",
-        `Los cambios de ${businessPayload.name || "tu comercio"}, portada y menú fueron guardados en el servidor.`
+        currentRole === "superadmin" ? "¡Demo Oficial Menu Py Actualizado!" : "¡Datos Guardados con Éxito!",
+        currentRole === "superadmin"
+          ? `La portada y los datos del Demo Oficial (${businessPayload.name || "Menu Py"}) fueron guardados y publicados para todos los visitantes.`
+          : `Los cambios de ${businessPayload.name || "tu comercio"}, portada y menú fueron guardados en el servidor.`
       );
       setCartOpen(false);
       return true;
@@ -6309,6 +6867,7 @@ export default function App() {
                         ...prev,
                         businessName: sel.businessName || "",
                         ownerName: sel.ownerName || "",
+                        email: (sel.requestedUser || sel.email || "").toLowerCase(),
                         whatsapp: (sel.whatsapp || "").replace(/[^\d]/g, ""),
                         plan: pDetails.planTitle,
                         planId: pDetails.planId,
@@ -6347,6 +6906,28 @@ export default function App() {
                 placeholder="Ej: Pizzería Donatello, Lomitería Central..."
                 className="w-full p-2.5 rounded-xl border text-sm font-semibold border-stone-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
               />
+            </div>
+
+            {/* Email Autorizado para la Licencia */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-bold text-stone-800">
+                  Email Autorizado como Usuario Gerente *:
+                </label>
+                <span className="text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">
+                  Único Autorizado
+                </span>
+              </div>
+              <input
+                type="email"
+                value={newCodeForm.email || ""}
+                onChange={(e) => setNewCodeForm((prev) => ({ ...prev, email: e.target.value.trim().toLowerCase() }))}
+                placeholder="Ej: mi-comercio@gmail.com"
+                className="w-full p-2.5 rounded-xl border text-xs font-mono font-bold border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-amber-50/20 text-stone-900"
+              />
+              <span className="text-[11px] text-stone-500 mt-1 block">
+                El Administrador otorga la licencia a este email y será el único autorizado a ingresar una vez habilitado.
+              </span>
             </div>
 
             {/* Dueño y WhatsApp */}
@@ -6817,8 +7398,119 @@ export default function App() {
   };
 
   /* =========================================================================
-     MODAL: SELECTOR DE UBICACIÓN GOOGLE MAPS (MODO GRATUITO MÓVIL)
+     MODAL: VINCULACIÓN DE LICENCIA OBLIGATORIA PARA ACCESO CON GOOGLE
      ========================================================================= */
+  const renderGoogleLicenseRequiredModal = () => {
+    if (!googleLicenseModal) return null;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+        <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border-2 border-amber-500 overflow-hidden my-6">
+          <div className="p-4.5 bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-stone-900 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-white/30 flex items-center justify-center font-black text-xl shadow">
+                🔑
+              </div>
+              <div>
+                <h3 className="font-black text-base leading-tight">
+                  Licencia Habilitada Requerida
+                </h3>
+                <p className="text-xs text-amber-950 font-medium">Vinculación de Cuenta de Google</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGoogleLicenseModal(null);
+                setBindLicenseCode("");
+                setBindLicenseError("");
+              }}
+              className="text-stone-900/80 hover:text-stone-900 p-1 rounded-lg transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 text-xs leading-relaxed">
+              <p className="font-bold mb-1 flex items-center gap-1.5 text-amber-900">
+                <AlertCircle size={15} className="flex-shrink-0" />
+                <span>Cuenta sin Licencia Activa</span>
+              </p>
+              <p>
+                El correo <b>{googleLicenseModal.email}</b> no se encuentra vinculado a ninguna licencia autorizada de la aplicación.
+              </p>
+              <p className="mt-1 text-stone-600">
+                Para acceder como Gerente a este sistema, ingresá el código de licencia otorgado o adquirí una licencia para tu negocio.
+              </p>
+            </div>
+
+            {bindLicenseError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center gap-2">
+                <AlertCircle size={16} className="flex-shrink-0" />
+                <span>{bindLicenseError}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-stone-800 mb-1 ml-1">
+                Ingresar Código de Licencia (ej: CAS-7K9B-X2M4):
+              </label>
+              <input
+                type="text"
+                value={bindLicenseCode}
+                onChange={(e) => {
+                  setBindLicenseCode(e.target.value.toUpperCase());
+                  setBindLicenseError("");
+                }}
+                placeholder="CAS-XXXX-XXXX"
+                className="w-full p-3 rounded-xl border-2 font-mono text-center font-black tracking-widest text-base uppercase bg-stone-50 border-stone-300 focus:bg-white focus:border-amber-500"
+              />
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <button
+                type="button"
+                onClick={handleBindGoogleLicense}
+                disabled={bindLicenseLoading || !bindLicenseCode.trim()}
+                className="w-full py-3 rounded-xl font-black text-sm bg-amber-500 hover:bg-amber-400 text-stone-900 shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {bindLicenseLoading ? (
+                  <><LoaderCircle className="animate-spin" size={17} /> Validando Licencia...</>
+                ) : (
+                  <><CheckCircle2 size={17} /> Vincular Licencia y Entrar</>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleLicenseModal(null);
+                  setView("register");
+                }}
+                className="w-full py-2.5 rounded-xl font-bold text-xs bg-stone-100 hover:bg-stone-200 text-stone-800 border border-stone-300 transition flex items-center justify-center gap-2"
+              >
+                <Store size={15} />
+                <span>Adquirir Licencia para mi Comercio (Planes y Precios)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleLicenseModal(null);
+                  setBindLicenseCode("");
+                  setBindLicenseError("");
+                }}
+                className="w-full py-2 text-xs text-stone-500 hover:text-stone-700 font-bold transition text-center"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   const renderMapSelectorModal = () => {
     if (!showMapSelectorModal) return null;
 
@@ -7132,59 +7824,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Opción Nivel 2: Acceso Rápido con Cuenta de Google */}
-          <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-stone-300 shadow-md">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs font-black text-stone-900 flex items-center gap-1.5">
-                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                </svg>
-                <span>Acceder con tu Email de Google</span>
-              </span>
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                1 Clic
-              </span>
-            </div>
-            <p className="text-[11px] text-stone-600 mb-3 leading-snug">
-              Ingresá directamente vinculando tu cuenta de correo Gmail sin necesidad de recordar PIN o contraseñas.
-            </p>
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={googleLoading}
-              className="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-white border-2 border-stone-300 hover:border-amber-500 hover:bg-amber-50/50 text-stone-800 shadow-sm hover:shadow flex items-center justify-center gap-2.5 transition active:scale-[0.98] disabled:opacity-60 cursor-pointer"
-            >
-              {googleLoading ? (
-                <><LoaderCircle className="animate-spin text-amber-600" size={17} /> Conectando con Google...</>
-              ) : (
-                <>
-                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-                  </svg>
-                  <span>Continuar con Google</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          <div className="relative flex py-2 items-center mb-2">
-            <div className="flex-grow border-t border-stone-300"></div>
-            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-stone-500 tracking-wider">o ingresar con usuario y PIN</span>
-            <div className="flex-grow border-t border-stone-300"></div>
-          </div>
-
-          <div className="mb-2">
-            <span className="text-[11px] font-black uppercase text-stone-500 tracking-wider block ml-1">
-              Accesos con Credenciales:
-            </span>
-          </div>
-
           {/* Selector de Perfil de Acceso: Gerente, Personal, Administrador */}
           <div className="mb-4 bg-stone-200/80 p-1 rounded-xl flex gap-1">
             <button
@@ -7244,6 +7883,69 @@ export default function App() {
               <ShieldCheck size={14} className={loginMode === "superadmin" ? "text-amber-600" : ""} />
               <span>👑 3. Admin</span>
             </button>
+          </div>
+
+          {/* Opción de Acceso con Cuenta de Google: SOLO para Gerente con Licencia o Administrador Maestro */}
+          {loginMode !== "staff" ? (
+            <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-stone-300 shadow-md">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="text-xs font-black text-stone-900 flex items-center gap-1.5">
+                  <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>{loginMode === "superadmin" ? "Acceso Maestro con Google" : "Acceder con tu Email de Google"}</span>
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                  {loginMode === "superadmin" ? "Solo Admin" : "Requiere Licencia"}
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-600 mb-3 leading-snug">
+                {loginMode === "superadmin"
+                  ? "Acceso directo para el administrador general autorizado de MenuPY."
+                  : "Ingresá con tu cuenta autorizada vinculada a la licencia de tu comercio."}
+              </p>
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={googleLoading}
+                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs sm:text-sm bg-white border-2 border-stone-300 hover:border-amber-500 hover:bg-amber-50/50 text-stone-800 shadow-sm hover:shadow flex items-center justify-center gap-2.5 transition active:scale-[0.98] disabled:opacity-60 cursor-pointer"
+              >
+                {googleLoading ? (
+                  <><LoaderCircle className="animate-spin text-amber-600" size={17} /> Conectando con Google...</>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    <span>Continuar con Google</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="mb-4 p-3.5 rounded-2xl bg-blue-50 border-2 border-blue-200 shadow-sm text-xs leading-relaxed text-blue-950">
+              <p className="font-bold flex items-center gap-1.5 text-blue-900 mb-1">
+                <ChefHat size={16} className="text-blue-700 flex-shrink-0" />
+                <span>Acceso Exclusivo de Personal Operativo</span>
+              </p>
+              <p className="text-[11px] text-blue-800 leading-snug">
+                Los mozos y cocineros ingresan únicamente con su <b>Nombre y PIN de 4 dígitos</b> configurado por la Gerencia en Permisos de Personal.
+              </p>
+            </div>
+          )}
+
+          <div className="relative flex py-2 items-center mb-2">
+            <div className="flex-grow border-t border-stone-300"></div>
+            <span className="flex-shrink mx-3 text-[10px] uppercase font-bold text-stone-500 tracking-wider">
+              {loginMode === "staff" ? "ingresar credenciales operativas" : "o ingresar con usuario y PIN"}
+            </span>
+            <div className="flex-grow border-t border-stone-300"></div>
           </div>
 
           <div key={`auth_box_${loginMode}_${loginFormKey}`} className="space-y-3">
@@ -7545,6 +8247,7 @@ export default function App() {
         {/* Modal para ingresar código de activación desde Login */}
         {renderActivateAppModal()}
         {renderLicenseBlockedModal()}
+        {renderGoogleLicenseRequiredModal()}
         {renderConfirmActionModal()}
       </div>
     );
@@ -7623,7 +8326,7 @@ export default function App() {
                   <span className="font-bold text-emerald-800 font-mono">{regSuccessVoucher.whatsapp}</span>
                 </div>
                 <div className="flex justify-between pt-2 border-t">
-                  <span className="text-stone-500 font-medium">Usuario asignado:</span>
+                  <span className="text-stone-500 font-medium">Email / Usuario de Acceso:</span>
                   <span className="font-mono font-bold text-stone-900 bg-stone-100 px-2 py-0.5 rounded">{regSuccessVoucher.requestedUser}</span>
                 </div>
                 <div className="flex justify-between">
@@ -7664,7 +8367,7 @@ export default function App() {
                     `📋 *Solicitud N°:* #${regSuccessVoucher.id}\n` +
                     `👤 *Propietario:* ${regSuccessVoucher.ownerName}\n` +
                     `📱 *WhatsApp del Local:* ${regSuccessVoucher.whatsapp}\n` +
-                    `🔑 *Usuario Solicitado:* ${regSuccessVoucher.requestedUser}\n` +
+                    `🔑 *Email de Acceso (Usuario):* ${regSuccessVoucher.requestedUser}\n` +
                     `📦 *Plan:* ${regSuccessVoucher.planTitle}\n` +
                     `💰 *Monto a Abonar:* Gs. ${Number(regSuccessVoucher.amountGs).toLocaleString("es-PY")}\n` +
                     `💳 *Forma de Pago:* ${regSuccessVoucher.paymentMethod}\n` +
@@ -7901,11 +8604,14 @@ export default function App() {
 
                   <div key={`reg_creds_${regFormKey}`} className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                     <div>
-                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Usuario Deseado *</label>
+                      <label className="font-bold block mb-1 flex items-center justify-between" style={{ color: BRAND.charcoal }}>
+                        <span>Usuario Deseado (Email) *</span>
+                        <span className="text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded">Solo Email</span>
+                      </label>
                       <input
                         key={`reg_usr_${regFormKey}`}
                         required
-                        type="text"
+                        type="email"
                         name={`reg_u_${regFormKey}`}
                         autoComplete="off"
                         autoCorrect="off"
@@ -7923,13 +8629,20 @@ export default function App() {
                         value={regForm.requestedUser}
                         onChange={(e) => {
                           userInteractedRegRef.current = true;
-                          setRegForm((prev) => ({ ...prev, requestedUser: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") }));
+                          const val = e.target.value.trim().toLowerCase();
+                          setRegForm((prev) => ({
+                            ...prev,
+                            requestedUser: val,
+                            email: prev.email ? prev.email : val,
+                          }));
                         }}
-                        placeholder="Ej: dinapoli, admin, etc."
+                        placeholder="tu-comercio@gmail.com"
                         className="w-full p-3 rounded-xl border text-sm font-mono font-bold"
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
-                      <span className="text-[11px] text-stone-500 mt-1 block">Solo letras minúsculas, números o guiones.</span>
+                      <span className="text-[11px] text-stone-500 mt-1 block">
+                        Ingresá un correo electrónico válido. El Administrador otorgará la licencia a este email y será el único autorizado a ingresar una vez habilitado.
+                      </span>
                     </div>
 
                     <div>
@@ -8392,7 +9105,12 @@ export default function App() {
                   }`}
                 >
                   <Store size={17} />
-                  <span>Datos del Comercio</span>
+                  <span>{adminRole === "superadmin" ? "Modificar Demo (Portada y Datos)" : "Datos del Comercio"}</span>
+                  {adminRole === "superadmin" && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-stone-900 flex items-center gap-0.5 shadow-sm">
+                      <Sparkles size={11} /> Demo Oficial
+                    </span>
+                  )}
                 </button>
               )}
 
@@ -10083,63 +10801,321 @@ export default function App() {
           {adminTab === "business" && (
             <div className="space-y-6">
 
-              {/* SECCIÓN PORTADA DEL COMERCIO */}
+              {/* BANNER PRINCIPAL DE CONFIGURACIÓN DEL DEMO (SOLO ADMINISTRADOR) */}
+              {adminRole === "superadmin" && (
+                <div className="rounded-2xl p-5 md:p-6 border-2 shadow-sm bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-white border-amber-300">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-amber-400 text-stone-900 shadow font-black flex items-center justify-center shrink-0">
+                        <Sparkles size={24} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <h2 className="slab text-xl md:text-2xl text-stone-900">
+                            Configuración del Demo Oficial de la Aplicación
+                          </h2>
+                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-400 text-stone-900 shadow-sm flex items-center gap-1">
+                            <Store size={12} /> Vitrina Pública Demo
+                          </span>
+                        </div>
+                        <p className="text-xs text-stone-600 font-medium">
+                          Modificá en tiempo real las <b>imágenes de portada</b>, <b>nombre</b>, <b>slogan</b>, <b>teléfonos</b> y <b>datos del Demo</b> que ven todos los visitantes y potenciales clientes al entrar a la app sin registrarse.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap shrink-0">
+                      <button
+                        type="button"
+                        onClick={saveAllAdminChanges}
+                        disabled={saving}
+                        className="px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition hover:brightness-105 flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
+                        style={{ background: BRAND.tomato }}
+                        title="Guardar y publicar todas las modificaciones de la portada y datos del demo"
+                      >
+                        {saving ? (
+                          <>
+                            <LoaderCircle className="animate-spin" size={14} />
+                            <span>Guardando Demo...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save size={14} />
+                            <span>Guardar Cambios del Demo</span>
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setView("menu")}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white hover:bg-stone-100 text-stone-800 border border-amber-300 shadow-sm flex items-center gap-1.5 transition active:scale-95"
+                        title="Ver la tienda demo tal como la ven los clientes ahora mismo"
+                      >
+                        <Eye size={15} className="text-amber-600" />
+                        <span>Ver Demo en Vivo</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`${SHEETS_API_URL}?action=getDemoStore`);
+                            const d = await res.json();
+                            if (d && d.business) {
+                              setDraftBusiness(d.business);
+                              setBusiness(d.business);
+                              if (d.menu) { setDraft(d.menu); setMenu(d.menu); }
+                              addToast("order_update", "Datos del Demo Recargados", "Se cargaron los datos guardados más recientes del demo.");
+                            }
+                          } catch (e) {}
+                        }}
+                        className="px-3 py-2 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-200 shadow-sm flex items-center gap-1.5 transition"
+                        title="Recargar datos guardados del demo desde el servidor"
+                      >
+                        <RefreshCw size={13} />
+                        <span>Recargar Demo</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Selector de Comercio para el Administrador (Demo u otros comercios) */}
+                  {availableStores && availableStores.length > 1 && (
+                    <div className="mt-4 pt-3 border-t border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <span className="font-bold text-stone-700 flex items-center gap-1.5">
+                        <Store size={14} className="text-amber-700" /> Comercio seleccionado para editar:
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSelectedAdminStoreId("losamigos");
+                            try {
+                              const res = await fetch(`${SHEETS_API_URL}?action=getDemoStore`);
+                              const d = await res.json();
+                              if (d?.business) {
+                                setDraftBusiness(d.business);
+                                setBusiness(d.business);
+                                if (d.menu) { setDraft(d.menu); setMenu(d.menu); }
+                              }
+                            } catch (e) {}
+                          }}
+                          className={`px-3 py-1 rounded-lg font-bold border transition ${
+                            selectedAdminStoreId === "losamigos"
+                              ? "bg-amber-400 text-stone-900 border-amber-500 shadow-sm"
+                              : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                          }`}
+                        >
+                          ⭐ Demo Oficial (Menu Py)
+                        </button>
+                        {availableStores.filter((s) => s.id !== "losamigos" && s.id !== "admin").map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={async () => {
+                              setSelectedAdminStoreId(s.id);
+                              try {
+                                const res = await fetch(`${SHEETS_API_URL}?comercio=${encodeURIComponent(s.id)}`);
+                                const d = await res.json();
+                                if (d?.business) {
+                                  setDraftBusiness(d.business);
+                                  setBusiness(d.business);
+                                  if (d.menu) { setDraft(d.menu); setMenu(d.menu); }
+                                }
+                              } catch (e) {}
+                            }}
+                            className={`px-3 py-1 rounded-lg font-bold border transition ${
+                              selectedAdminStoreId === s.id
+                                ? "bg-amber-400 text-stone-900 border-amber-500 shadow-sm"
+                                : "bg-white text-stone-700 border-stone-300 hover:bg-stone-50"
+                            }`}
+                          >
+                            🏪 {s.name || s.id}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SECCIÓN PORTADA DEL COMERCIO / DEMO */}
               <div className="rounded-2xl p-5 md:p-6 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="p-2 rounded-xl" style={{ background: BRAND.tomato }}>
-                    <ImageIcon size={20} color={BRAND.cream} />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-xl" style={{ background: BRAND.tomato }}>
+                      <ImageIcon size={20} color={BRAND.cream} />
+                    </div>
+                    <div>
+                      <h2 className="slab text-lg md:text-xl" style={{ color: BRAND.charcoal }}>
+                        {adminRole === "superadmin" ? "Imágenes de Portada del Demo (Banner Principal)" : "Portada del Comercio (Banner Principal)"}
+                      </h2>
+                      <p className="text-xs text-stone-600">
+                        {adminRole === "superadmin"
+                          ? "Esta imagen es la portada oficial del Demo que verán todos los visitantes sin registrarse. Podés elegir entre las portadas prediseñadas, subir una foto propia o ingresar una URL."
+                          : "Esta imagen se muestra en la cabecera de la tienda para PC y celulares."}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="slab text-lg md:text-xl" style={{ color: BRAND.charcoal }}>Portada del Comercio (Banner Principal)</h2>
-                    <p className="text-xs text-stone-600">Esta imagen se muestra en la cabecera de la tienda para PC y celulares.</p>
+
+                  {/* Selector de modo de vista previa (PC vs Móvil) */}
+                  <div className="flex items-center gap-1 bg-stone-200/80 p-1 rounded-xl self-start sm:self-auto border border-stone-300">
+                    <button
+                      type="button"
+                      onClick={() => setBannerPreviewDevice("pc")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        bannerPreviewDevice === "pc" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+                      }`}
+                    >
+                      <span>🖥️ Vista PC</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBannerPreviewDevice("mobile")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                        bannerPreviewDevice === "mobile" ? "bg-white text-stone-900 shadow-sm" : "text-stone-600 hover:text-stone-900"
+                      }`}
+                    >
+                      <span>📱 Vista Móvil</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Tarjeta de Especificaciones de Imagen Requeridas */}
+                {/* GALERÍA DE PORTADAS TEMÁTICAS PREDISEÑADAS (PARA DEMO Y COMERCIOS) */}
                 <div className="my-4 rounded-xl p-4 border" style={{ background: "#FFF8E7", borderColor: BRAND.mustard }}>
-                  <p className="font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-1.5" style={{ color: BRAND.charcoal }}>
-                    <Info size={15} color={BRAND.tomato} /> Especificaciones técnicas de la portada:
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs" style={{ color: BRAND.charcoal }}>
-                    <div className="bg-white/70 p-2.5 rounded-lg border border-amber-200">
-                      <span className="font-bold block text-stone-800">📐 Medidas recomendadas</span>
-                      <span className="text-stone-600">1200 x 400 px (Proporción 3:1 panorámica) o hasta 1920 x 640 px para alta definición.</span>
-                    </div>
-                    <div className="bg-white/70 p-2.5 rounded-lg border border-amber-200">
-                      <span className="font-bold block text-stone-800">🖼️ Formatos permitidos</span>
-                      <span className="text-stone-600">JPG, PNG, o WebP (con fondo o transparencias).</span>
-                    </div>
-                    <div className="bg-white/70 p-2.5 rounded-lg border border-amber-200">
-                      <span className="font-bold block text-stone-800">⚖️ Tamaño de archivo</span>
-                      <span className="text-stone-600">Hasta 5 MB (el optimizador integrado la comprime automáticamente para carga veloz).</span>
-                    </div>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-bold text-xs uppercase tracking-wider flex items-center gap-1.5" style={{ color: BRAND.charcoal }}>
+                      <Sparkles size={15} color={BRAND.tomato} /> Galería de Portadas Recomendadas para el Demo (Elegí 1 con un Clic):
+                    </p>
+                    <span className="text-[11px] font-bold text-stone-500 hidden sm:inline">
+                      {DEMO_BANNER_PRESETS.length} estilos disponibles
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {DEMO_BANNER_PRESETS.map((preset) => {
+                      const isSelected = (draftBusiness.bannerImage || "") === preset.url;
+                      return (
+                        <div
+                          key={preset.id}
+                          onClick={() => {
+                            setDraftBusiness((prev) => ({ ...prev, bannerImage: preset.url }));
+                            setDirty(true);
+                            addToast("order_update", `Portada seleccionada: ${preset.title}`, "Hacé clic en Guardar Cambios para publicarla.");
+                          }}
+                          className={`relative rounded-xl overflow-hidden border-2 cursor-pointer transition-all duration-200 group bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
+                            isSelected
+                              ? "border-amber-500 ring-2 ring-amber-400/60 shadow-amber-200"
+                              : "border-stone-200 hover:border-amber-400"
+                          }`}
+                        >
+                          <div className="aspect-[16/9] w-full overflow-hidden bg-stone-900 relative">
+                            <img
+                              src={preset.url}
+                              alt={preset.title}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              onError={(e) => { e.currentTarget.src = "/banner.jpg"; }}
+                            />
+                            <div className="absolute top-1.5 right-1.5">
+                              {isSelected ? (
+                                <span className="bg-amber-400 text-stone-900 text-[10px] font-black px-1.5 py-0.5 rounded-full shadow flex items-center gap-0.5">
+                                  <Check size={11} /> Activa
+                                </span>
+                              ) : (
+                                <span className="bg-black/60 backdrop-blur-sm text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                                  {preset.badge}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="p-2">
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <span className="text-xs">{preset.emoji}</span>
+                              <h4 className="font-bold text-[11px] text-stone-900 leading-tight truncate">
+                                {preset.title}
+                              </h4>
+                            </div>
+                            <p className="text-[10px] text-stone-500 line-clamp-1 leading-tight">
+                              {preset.desc}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Vista previa de la portada actual */}
+                {/* Vista previa de la portada actual adaptable (PC vs Móvil) */}
                 <div className="mb-4">
-                  <p className="text-xs font-bold mb-2 ml-1" style={{ color: BRAND.charcoal }}>Vista previa actual:</p>
-                  <div className="relative rounded-2xl overflow-hidden border-2 shadow-inner bg-stone-900 aspect-[3/1] max-h-60 flex items-center justify-center" style={{ borderColor: BRAND.paperDark }}>
-                    {draftBusiness.bannerImage ? (
-                      <img
-                        src={draftBusiness.bannerImage}
-                        alt="Portada"
-                        className="w-full h-full object-cover"
-                        onError={(e) => { e.currentTarget.src = "/banner.jpg"; }}
-                      />
-                    ) : (
-                      <div className="text-stone-400 text-sm flex flex-col items-center gap-1">
-                        <ImageIcon size={32} />
-                        <span>Sin imagen asignada</span>
-                      </div>
-                    )}
-                    {bannerUploading && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center gap-2 text-white font-bold text-sm">
-                        <LoaderCircle className="animate-spin" size={24} />
-                        Optimizando y procesando imagen...
-                      </div>
-                    )}
+                  <div className="flex items-center justify-between mb-2 ml-1">
+                    <p className="text-xs font-bold" style={{ color: BRAND.charcoal }}>
+                      Vista previa actual ({bannerPreviewDevice === "pc" ? "Cabecera PC" : "Cabecera Celular"}):
+                    </p>
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      {draftBusiness.bannerImage ? (draftBusiness.bannerImage.startsWith("data:") ? "Foto personalizada" : draftBusiness.bannerImage) : "Sin imagen asignada"}
+                    </span>
                   </div>
+
+                  {bannerPreviewDevice === "pc" ? (
+                    // VISTA PREVIA PC: Panorámica alargada con ambient backdrop
+                    <div className="relative rounded-2xl overflow-hidden border-2 shadow-inner bg-stone-950 aspect-[2117/743] max-h-64 flex items-center justify-center" style={{ borderColor: BRAND.paperDark }}>
+                      {/* Fondo ambiental que expande colores */}
+                      {draftBusiness.bannerImage && (
+                        <div
+                          className="absolute inset-0 pointer-events-none opacity-30 blur-2xl scale-110"
+                          style={{
+                            backgroundImage: `url(${draftBusiness.bannerImage})`,
+                            backgroundPosition: 'center',
+                            backgroundSize: 'cover',
+                          }}
+                        />
+                      )}
+                      {draftBusiness.bannerImage ? (
+                        <img
+                          src={draftBusiness.bannerImage}
+                          alt="Portada Demo"
+                          className="relative z-10 w-full h-full object-contain"
+                          onError={(e) => { e.currentTarget.src = "/banner.jpg"; }}
+                        />
+                      ) : (
+                        <div className="text-stone-400 text-sm flex flex-col items-center gap-1">
+                          <ImageIcon size={32} />
+                          <span>Sin imagen asignada</span>
+                        </div>
+                      )}
+                      {bannerUploading && (
+                        <div className="absolute inset-0 z-20 bg-black/60 flex items-center justify-center gap-2 text-white font-bold text-sm">
+                          <LoaderCircle className="animate-spin" size={24} />
+                          Optimizando y procesando imagen...
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    // VISTA PREVIA MÓVIL: Marco de smartphone realista
+                    <div className="p-3 bg-stone-100 rounded-2xl border flex justify-center">
+                      <div className="w-full max-w-sm rounded-2xl overflow-hidden border-4 border-stone-800 shadow-xl bg-stone-950">
+                        <div className="bg-stone-800 py-1 px-3 text-[10px] text-stone-400 text-center font-bold flex items-center justify-between">
+                          <span>09:41</span>
+                          <span className="text-stone-300">● La Caserita Demo</span>
+                          <span>🔋 100%</span>
+                        </div>
+                        <div className="relative aspect-[2117/743] max-h-36 bg-stone-900 flex items-center justify-center overflow-hidden">
+                          {draftBusiness.bannerImage ? (
+                            <img
+                              src={draftBusiness.bannerImage}
+                              alt="Portada Móvil"
+                              className="w-full h-full object-contain"
+                              onError={(e) => { e.currentTarget.src = "/banner.jpg"; }}
+                            />
+                          ) : (
+                            <ImageIcon size={24} className="text-stone-500" />
+                          )}
+                        </div>
+                        <div className="p-2.5 bg-stone-900 border-t border-stone-800 text-white">
+                          <h4 className="font-bold text-xs truncate">{draftBusiness.name || "Menu Py"}</h4>
+                          <p className="text-[10px] text-amber-300 truncate">{draftBusiness.slogan || "Pedí online - Tu Carta Digital y Pedidos por WhatsApp"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Botones de acción para subir imagen */}
@@ -10158,7 +11134,7 @@ export default function App() {
                     className="px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 shadow transition hover:brightness-105 disabled:opacity-50"
                     style={{ background: BRAND.tomato, color: BRAND.cream }}
                   >
-                    <Upload size={16} /> Subir nueva foto desde mi dispositivo
+                    <Upload size={16} /> Subir nueva foto desde mi PC o Celular
                   </button>
 
                   <button
@@ -10170,7 +11146,7 @@ export default function App() {
                     className="px-4 py-2.5 rounded-xl font-bold text-xs md:text-sm flex items-center gap-2 border-2 transition hover:bg-stone-200/50"
                     style={{ borderColor: BRAND.paperDark, color: BRAND.charcoal }}
                   >
-                    <RefreshCw size={15} /> Usar portada predeterminada
+                    <RefreshCw size={15} /> Usar portada original
                   </button>
                 </div>
 
@@ -10197,17 +11173,21 @@ export default function App() {
                 )}
               </div>
 
-              {/* SECCIÓN: INFORMACIÓN DEL LOCAL */}
+              {/* SECCIÓN: INFORMACIÓN DEL LOCAL / DEMO */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="rounded-2xl p-5 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
                   <div className="flex items-center gap-2 mb-3">
                     <Store size={18} color={BRAND.tomato} />
-                    <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>Identidad del Comercio</h3>
+                    <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>
+                      {adminRole === "superadmin" ? "Identidad y Datos del Demo" : "Identidad del Comercio"}
+                    </h3>
                   </div>
 
                   <div className="space-y-3 text-xs">
                     <div>
-                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Nombre del Comercio</label>
+                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>
+                        {adminRole === "superadmin" ? "Nombre de la Tienda Demo" : "Nombre del Comercio"}
+                      </label>
                       <input
                         value={draftBusiness.name}
                         onChange={(e) => {
@@ -10219,8 +11199,9 @@ export default function App() {
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
                     </div>
+
                     <div>
-                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Slogan / Subtítulo</label>
+                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Slogan / Subtítulo del Demo</label>
                       <input
                         value={draftBusiness.slogan}
                         onChange={(e) => {
@@ -10232,6 +11213,40 @@ export default function App() {
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
                     </div>
+
+                    {/* Selector de Rubro Gastronómico con chips rápidos */}
+                    <div>
+                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>
+                        Rubro o Especialidad:
+                      </label>
+                      <input
+                        value={draftBusiness.rubro || ""}
+                        onChange={(e) => {
+                          setDraftBusiness((prev) => ({ ...prev, rubro: e.target.value }));
+                          setDirty(true);
+                        }}
+                        placeholder="Ej: Rotisería, Hamburguesería, Pizzería, Restaurante..."
+                        className="w-full p-2.5 rounded-xl border text-xs mb-1.5"
+                        style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
+                      />
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {["🍗 Rotisería", "🍔 Hamburguesería", "🍕 Pizzería", "🥩 Parrillada", "☕ Cafetería", "🍝 Pastas", "🍣 Sushi"].map((chip) => (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => {
+                              const cleanRubro = chip.split(" ")[1];
+                              setDraftBusiness((prev) => ({ ...prev, rubro: cleanRubro }));
+                              setDirty(true);
+                            }}
+                            className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white border border-stone-300 hover:bg-amber-100 transition text-stone-700"
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     <div>
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Dirección del Local</label>
                       <input
@@ -10245,6 +11260,7 @@ export default function App() {
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
                     </div>
+
                     <div>
                       <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Aclaración sobre el envío (Delivery)</label>
                       <input
@@ -10258,6 +11274,20 @@ export default function App() {
                         style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                       />
                     </div>
+
+                    <div>
+                      <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>Horario de Atención</label>
+                      <input
+                        value={draftBusiness.schedule || ""}
+                        onChange={(e) => {
+                          setDraftBusiness((prev) => ({ ...prev, schedule: e.target.value }));
+                          setDirty(true);
+                        }}
+                        placeholder="Ej: Lun a Dom: 11:00 a 15:00 y 19:30 a 23:30"
+                        className="w-full p-2.5 rounded-xl border text-sm"
+                        style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -10266,7 +11296,9 @@ export default function App() {
                   <div className="rounded-2xl p-5 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
                     <div className="flex items-center gap-2 mb-3">
                       <Phone size={18} color={BRAND.green} />
-                      <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>WhatsApp para Pedidos</h3>
+                      <h3 className="slab text-base" style={{ color: BRAND.charcoal }}>
+                        {adminRole === "superadmin" ? "WhatsApp para Pedidos del Demo" : "WhatsApp para Pedidos"}
+                      </h3>
                     </div>
 
                     <div className="space-y-3 text-xs">
@@ -10280,12 +11312,14 @@ export default function App() {
                             setDraftBusiness((prev) => ({ ...prev, phoneIntl: e.target.value.replace(/[^\d]/g, "") }));
                             setDirty(true);
                           }}
-                          placeholder="Ej: 595985913400"
+                          placeholder="Ej: 595981456789"
                           className="w-full p-2.5 rounded-xl border text-sm font-mono"
                           style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                         />
                         <span className="text-[11px] text-stone-500 mt-0.5 block">
-                          Los clientes enviarán sus pedidos directamente a este número por WhatsApp.
+                          {adminRole === "superadmin"
+                            ? "Los clientes de prueba que hagan pedidos en la demo abrirán el WhatsApp hacia este número."
+                            : "Los clientes enviarán sus pedidos directamente a este número por WhatsApp."}
                         </span>
                       </div>
 
@@ -10299,13 +11333,35 @@ export default function App() {
                             setDraftBusiness((prev) => ({ ...prev, phoneDisplay: e.target.value }));
                             setDirty(true);
                           }}
-                          placeholder="Ej: 0985 913 400"
+                          placeholder="Ej: 0981 123 456"
                           className="w-full p-2.5 rounded-xl border text-sm font-semibold"
                           style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                         />
                       </div>
                     </div>
                   </div>
+
+                  {/* ACCESO RÁPIDO: EDITAR MENÚ Y PLATOS DEL DEMO */}
+                  {adminRole === "superadmin" && (
+                    <div className="rounded-2xl p-4 border-2 shadow-sm bg-amber-50 border-amber-300 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <Utensils size={20} className="text-amber-800" />
+                        <div>
+                          <h4 className="font-bold text-xs text-stone-900">¿Deseás cambiar los platos o precios del Demo?</h4>
+                          <p className="text-[11px] text-stone-600">Configurá las categorías, fotos y platos que se exhiben en la demo.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setAdminTab("menu")}
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-stone-900 shadow-sm shrink-0 transition"
+                      >
+                        Editar Platos
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
                   {/* TARJETA OFICIAL: LICENCIA Y SUSCRIPCIÓN DEL COMERCIO */}
                   {(() => {
@@ -10730,8 +11786,6 @@ export default function App() {
                       </span>
                     </div>
                   </div>
-                </div>
-              </div>
 
             </div>
           )}
@@ -10741,12 +11795,36 @@ export default function App() {
               ============================================================= */}
           {adminTab === "menu" && (
             <div className="space-y-6">
-              <div className="rounded-xl p-3.5 flex items-start gap-2.5 shadow-sm" style={{ background: "#FFF3C4", border: `1px solid ${BRAND.mustard}` }}>
-                <span className="text-xl">💡</span>
-                <p className="text-xs md:text-sm" style={{ color: BRAND.charcoal }}>
-                  Podés editar precios, agregar categorías, subir fotos de cada plato o eliminarlos. Recordá presionar <b>"Guardar cambios"</b> abajo cuando termines.
-                </p>
-              </div>
+              {adminRole === "superadmin" ? (
+                <div className="rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm border border-amber-300 bg-amber-50">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">⭐</span>
+                    <div>
+                      <p className="text-xs md:text-sm font-bold text-amber-950 flex items-center gap-2 flex-wrap">
+                        <span>Editando Menú del Demo Oficial ({business.name || "Menu Py"})</span>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900">Vitrina Pública</span>
+                      </p>
+                      <p className="text-xs text-amber-800">
+                        Los platos, fotos y precios que configures aquí se mostrarán directamente en el Demo público que ven todos los visitantes.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setAdminTab("business"); }}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-white text-stone-800 border border-amber-300 hover:bg-amber-100 flex items-center gap-1.5 shrink-0 shadow-sm transition"
+                  >
+                    <Store size={14} /> Ir a Portada y Datos del Demo
+                  </button>
+                </div>
+              ) : (
+                <div className="rounded-xl p-3.5 flex items-start gap-2.5 shadow-sm" style={{ background: "#FFF3C4", border: `1px solid ${BRAND.mustard}` }}>
+                  <span className="text-xl">💡</span>
+                  <p className="text-xs md:text-sm" style={{ color: BRAND.charcoal }}>
+                    Podés editar precios, agregar categorías, subir fotos de cada plato o eliminarlos. Recordá presionar <b>"Guardar cambios"</b> abajo cuando termines.
+                  </p>
+                </div>
+              )}
 
               {draft.map((c, catIdx) => (
                 <div key={catIdx} className="rounded-2xl p-4 md:p-6 border-2 shadow-sm" style={{ background: BRAND.cream, borderColor: BRAND.paperDark }}>
@@ -12108,6 +13186,7 @@ export default function App() {
                                           code: generateRandomActivationCode(),
                                           businessName: bName,
                                           ownerName: oName,
+                                          email: (client.requestedUser || client.email || "").toLowerCase(),
                                           whatsapp: String(client.whatsapp).replace(/[^\d]/g, ""),
                                           plan: pDetails.planTitle,
                                           planId: pDetails.planId,
@@ -12655,6 +13734,7 @@ export default function App() {
         {renderCreateCodeModal()}
         {renderActivateAppModal()}
         {renderLicenseBlockedModal()}
+        {renderGoogleLicenseRequiredModal()}
         {renderConfirmActionModal()}
         {renderSaveDataModal()}
 
@@ -12754,13 +13834,13 @@ export default function App() {
         {/* Viñeta suave */}
         <div className="absolute inset-0 bg-black/40 pointer-events-none" />
 
-        {/* Contenedor responsivo del Banner - Imagen completa sin recortes */}
-        <div className="relative z-10 w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl flex items-center justify-center md:px-6 md:py-3">
-          <div className="relative w-full flex items-center justify-center overflow-hidden md:rounded-2xl md:shadow-2xl md:border md:border-amber-500/20 bg-stone-950/80">
+        {/* Contenedor responsivo del Banner - Panorámico alargado 2117x743 sin ensanchar en altura */}
+        <div className="relative z-10 w-full max-w-7xl 2xl:max-w-[1700px] flex items-center justify-center px-0 sm:px-4 py-0 sm:py-2">
+          <div className="relative w-full flex items-center justify-center overflow-hidden sm:rounded-2xl sm:shadow-2xl sm:border sm:border-amber-500/20 bg-stone-950/40">
             <img 
               src={business.bannerImage || "/Flyers-MenuPY.png"} 
               alt={business.name || "La Caserita"} 
-              className="w-full h-auto max-h-[380px] sm:max-h-[460px] object-contain block mx-auto transition-all"
+              className="w-full h-auto aspect-[2117/743] max-h-[380px] sm:max-h-[440px] md:max-h-[490px] object-contain block mx-auto transition-all"
               onError={(e) => { e.currentTarget.src = "/Flyers-MenuPY.png"; }} 
             />
           </div>
@@ -14200,6 +15280,40 @@ export default function App() {
             </button>
           </div>
 
+          {/* Enlace al panel de precios para adquirir la app */}
+          <div className="pt-4 pb-2">
+            <div 
+              className="max-w-xl mx-auto p-4 rounded-2xl border text-center space-y-2.5 shadow-xl transition-all hover:scale-[1.01]"
+              style={{
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(14, 165, 233, 0.18) 50%, rgba(245, 158, 11, 0.15) 100%)",
+                borderColor: "rgba(251, 191, 36, 0.5)",
+                boxShadow: "0 8px 30px rgba(0, 0, 0, 0.25)"
+              }}
+            >
+              <p className="font-bold text-amber-300 text-sm md:text-base flex items-center justify-center gap-2 drop-shadow-sm">
+                <Sparkles size={17} className="text-amber-400 animate-pulse" />
+                <span>¿Querés una App con pedidos para tu propio negocio?</span>
+              </p>
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegSuccessVoucher(null);
+                    setView("register");
+                  }}
+                  className="px-5 py-2.5 rounded-full font-black text-xs md:text-sm text-stone-900 shadow-xl hover:brightness-110 active:scale-95 transition inline-flex items-center gap-2 border-2 border-amber-200"
+                  style={{
+                    background: "linear-gradient(135deg, #F59E0B 0%, #FBBF24 50%, #F59E0B 100%)",
+                    boxShadow: "0 4px 20px rgba(245, 158, 11, 0.45)"
+                  }}
+                >
+                  <Store size={16} />
+                  <span>Adquirir App para mi Comercio (Planes y Precios)</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Sección de Autoría y Contacto de CyM Software */}
           <div
             className="pt-6 mt-6 flex flex-col items-center justify-center gap-3 border-t"
@@ -14281,6 +15395,7 @@ export default function App() {
       {renderCreateCodeModal()}
       {renderActivateAppModal()}
       {renderLicenseBlockedModal()}
+      {renderGoogleLicenseRequiredModal()}
       {renderConfirmActionModal()}
       {renderSaveDataModal()}
 
