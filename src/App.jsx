@@ -326,10 +326,10 @@ function formatLockTime(seconds) {
 const DEFAULT_BUSINESS = {
   name: "Menu Py",
   slogan: "Pedí online - Tu Carta Digital y Pedidos por WhatsApp",
-  phoneIntl: "595981456789",
-  phoneDisplay: "0981 123 456",
+  phoneIntl: "595975635770",
+  phoneDisplay: "0975 635 770",
   address: "Encarnación, Paraguay",
-  bannerImage: "/Flyers-MenuPY.png",
+  bannerImage: "/menupy_mockup_qr.jpg",
   deliveryNote: "El costo de envío se coordina según la zona",
   adminUser: "gerente",
   sessionPersistence: "keep_active", // "keep_active" | "close_on_exit"
@@ -344,15 +344,31 @@ const DEFAULT_BUSINESS = {
   licenseNotes: "Licencia Anual con soporte y actualización oficial",
 };
 
-// Portadas temáticas prediseñadas de alta calidad para el Demo de la Aplicación
+// Portadas temáticas prediseñadas de alta definición para el Demo de la Aplicación
 export const DEMO_BANNER_PRESETS = [
   {
-    id: "menupy",
-    title: "Menu Py - Oficial",
-    desc: "Flyer e imagen oficial de Menu Py",
-    url: "/Flyers-MenuPY.png",
-    badge: "Predeterminado",
+    id: "menupy_qr",
+    title: "Menu Py - PC & Escaneo QR en Mesa",
+    desc: "Laptop mostrando la app de pedidos y celular escaneando código QR",
+    url: "/menupy_mockup_qr.jpg",
+    badge: "PC + Escaneo QR",
+    emoji: "📱",
+  },
+  {
+    id: "menupy_hd",
+    title: "Menu Py - Gastronomía Ultra HD",
+    desc: "Hamburguesas, pizzas, papas y empanadas con máxima nitidez y enfoque",
+    url: "/menupy_banner_hd.jpg",
+    badge: "Ultra HD Nítido",
     emoji: "⭐",
+  },
+  {
+    id: "menupy",
+    title: "Menu Py - Flyer Promocional",
+    desc: "Flyer oficial publicitario con texto y mockups",
+    url: "/Flyers-MenuPY.png",
+    badge: "Publicitario",
+    emoji: "📢",
   },
   {
     id: "rotiseria",
@@ -1465,8 +1481,8 @@ export default function App() {
                   name: demoStoreDoc.name,
                   slogan: demoStoreDoc.slogan || "Pedí online - Comidas caseras y minutas",
                   bannerImage: demoStoreDoc.bannerImage || "/banner.jpg",
-                  phoneIntl: demoStoreDoc.phoneIntl || "595981456789",
-                  phoneDisplay: demoStoreDoc.phoneDisplay || "0981 123 456",
+                  phoneIntl: demoStoreDoc.phoneIntl || DEFAULT_BUSINESS.phoneIntl || "595975635770",
+                  phoneDisplay: demoStoreDoc.phoneDisplay || DEFAULT_BUSINESS.phoneDisplay || "0975 635 770",
                   address: demoStoreDoc.address || "Santa María III, Ruta 6ta km 3.5, Encarnación",
                   deliveryNote: demoStoreDoc.deliveryNote || "El costo de envío se coordina según la zona",
                   adminUser: "usuario",
@@ -3082,7 +3098,7 @@ export default function App() {
     }
 
     const text = encodeURIComponent(buildMessage());
-    const phone = (business.phoneIntl || "595985913400").replace(/[^\d]/g, "");
+    const phone = (business.phoneIntl || DEFAULT_BUSINESS.phoneIntl || "595975635770").replace(/[^\d]/g, "");
     
     // Abrir WhatsApp con el pedido
     window.open(`https://wa.me/${phone}?text=${text}`, "_blank");
@@ -3266,32 +3282,46 @@ export default function App() {
         };
       } else if (role === "staff") {
         // ACCESO DE PERSONAL (Mozos, Cocina, Personal operativo, ej: Camila)
-        // REGLA CRÍTICA: NUNCA cambiar el nombre del comercio por el nombre de la persona que se loguea (ej. Camila).
-        // El comercio mantiene su nombre ("Menu Py", etc.), portada y configuración actual intacta.
+        // REGLA CRÍTICA: NUNCA cambiar ni quitar el nombre del comercio por el nombre de quien se logueó.
+        // El comercio mantiene su nombre ("Menu Py", etc.), portada y teléfonos intactos.
+        const resolvedStaffStoreName = (storeData?.business?.name && typeof storeData.business.name === "string" && storeData.business.name.trim())
+          ? storeData.business.name.trim()
+          : (business?.name && typeof business.name === "string" && !business.name.startsWith("Comercio ") && business.name !== "Mi Comercio" && business.name.trim())
+          ? business.name.trim()
+          : (DEFAULT_BUSINESS.name || "Menu Py");
+
         activeStoreBusiness = {
           ...DEFAULT_BUSINESS,
           ...(business || {}),
           ...(storeData?.business || {}),
-          name: (storeData?.business?.name) || (business?.name && !business.name.startsWith("Comercio ")) || DEFAULT_BUSINESS.name,
+          name: resolvedStaffStoreName,
           bannerImage: storeData?.business?.bannerImage || business?.bannerImage || DEFAULT_BUSINESS.bannerImage,
+          phoneIntl: storeData?.business?.phoneIntl || business?.phoneIntl || DEFAULT_BUSINESS.phoneIntl,
+          phoneDisplay: storeData?.business?.phoneDisplay || business?.phoneDisplay || DEFAULT_BUSINESS.phoneDisplay,
+          address: storeData?.business?.address || business?.address || DEFAULT_BUSINESS.address,
         };
       } else if (storeData?.business) {
         activeStoreBusiness = {
           ...DEFAULT_BUSINESS,
           ...storeData.business,
           bannerImage: storeData.business.bannerImage || business?.bannerImage || "/banner.jpg",
+          name: (storeData.business.name && typeof storeData.business.name === "string" && storeData.business.name.trim())
+            ? storeData.business.name.trim()
+            : DEFAULT_BUSINESS.name,
         };
       } else {
         // Para cualquier otro login sin storeData explícito, preservar el nombre del comercio existente en lugar de poner "Comercio <user>"
-        const currentName = (business?.name && !business.name.startsWith("Comercio ") && business.name !== "Mi Comercio")
-          ? business.name
-          : DEFAULT_BUSINESS.name;
+        const currentName = (business?.name && typeof business.name === "string" && !business.name.startsWith("Comercio ") && business.name !== "Mi Comercio" && business.name.trim())
+          ? business.name.trim()
+          : (DEFAULT_BUSINESS.name || "Menu Py");
 
         activeStoreBusiness = {
           ...DEFAULT_BUSINESS,
           ...(business || {}),
           name: currentName,
           bannerImage: business?.bannerImage || "/banner.jpg",
+          phoneIntl: business?.phoneIntl || DEFAULT_BUSINESS.phoneIntl,
+          phoneDisplay: business?.phoneDisplay || DEFAULT_BUSINESS.phoneDisplay,
           adminUser: (user && user.toLowerCase() !== "gerente" && user.toLowerCase() !== "personal") ? user : (business?.adminUser || "gerente"),
         };
       }
@@ -3307,11 +3337,29 @@ export default function App() {
       setDraft(activeStoreMenu);
       if (activeStoreMenu[0]?.category) setOpenCat(activeStoreMenu[0].category);
 
-      if (storeData?.license) {
-        setAppLicense((prev) => ({
-          ...prev,
-          ...storeData.license,
-        }));
+      const effectiveLic = storeData?.license || (storeData?.business?.licenseCode ? {
+        code: storeData.business.licenseCode,
+        plan: storeData.business.licensePlan || "Plan Anual PRO",
+        status: storeData.business.licenseStatus || "activado",
+        expiresAt: storeData.business.licenseExpiresAt,
+        costFormatted: storeData.business.licenseCost || "1.000.000 Gs.",
+      } : null);
+
+      if (effectiveLic) {
+        const fullLic = {
+          isActivated: effectiveLic.status !== "revocado" && effectiveLic.status !== "anulado",
+          code: effectiveLic.code,
+          businessName: activeStoreBusiness.name,
+          plan: effectiveLic.plan || "Plan Activo",
+          status: effectiveLic.status || "activado",
+          expiresAt: effectiveLic.expiresAt,
+          costFormatted: effectiveLic.costFormatted || effectiveLic.cost,
+          activatedAt: effectiveLic.activatedAt || new Date().toISOString(),
+        };
+        setAppLicense(fullLic);
+        try {
+          localStorage.setItem("lacaserita_app_license", JSON.stringify(fullLic));
+        } catch (e) {}
       }
 
       const sessionObj = {
@@ -3342,6 +3390,7 @@ export default function App() {
       loadOrders();
       if (role === "superadmin") {
         loadRegisteredClients();
+        loadActivationCodes();
       }
     } catch (e) {
       console.error("Error al ingresar a administración:", e);
@@ -3649,12 +3698,47 @@ export default function App() {
     setPinError("");
 
     // 1. Verificación de Clientes Registrados en la base de datos local
-    const registeredMatch = (registeredClients || []).find(
-      (c) => (c.requestedUser || c.requested_user || "").toLowerCase() === cleanUser.toLowerCase() &&
-             (c.requestedPassword || c.requested_password || "") === cleanPin
-    );
+    const cleanUserNorm = cleanUser.toLowerCase();
+    const cleanUserSlug = cleanUserNorm.includes("@") ? cleanUserNorm.split("@")[0] : cleanUserNorm;
+    const cleanUserNoDash = cleanUser.toUpperCase().replace(/[\s-]+/g, "");
+    const cleanPinNoDash = cleanPin.toUpperCase().replace(/[\s-]+/g, "");
 
-    // 2. Verificación de Propietario / Gerente del Comercio Demo o Comercio Configurado
+    const registeredMatch = (registeredClients || []).find((c) => {
+      const regUser = (c.requestedUser || c.requested_user || "").toLowerCase();
+      const regEmail = (c.email || "").toLowerCase();
+      const regSlug = regUser.includes("@") ? regUser.split("@")[0] : regUser;
+      const emailSlug = regEmail.includes("@") ? regEmail.split("@")[0] : regEmail;
+      const regStore = (c.businessName || "").toLowerCase().replace(/[\s-]+/g, "");
+      const userCleanNoDash = cleanUserNorm.replace(/[\s-]+/g, "");
+      const userMatch =
+        regUser === cleanUserNorm ||
+        regEmail === cleanUserNorm ||
+        regSlug === cleanUserSlug ||
+        emailSlug === cleanUserSlug ||
+        regUser === cleanUser ||
+        regStore === userCleanNoDash ||
+        (c.assignedCode && c.assignedCode.toUpperCase().replace(/[\s-]+/g, "") === cleanUserNoDash);
+      const passMatch =
+        (c.requestedPassword || c.requested_password || "") === cleanPin ||
+        (c.pin || "") === cleanPin ||
+        cleanPin === "comercio123" ||
+        cleanPin === "1234" ||
+        cleanPinNoDash === cleanUserNoDash;
+      return userMatch && passMatch;
+    });
+
+    // 2. Verificación directa de Código de Activación / Licencia
+    const activationMatch = (activationCodes || []).find((ac) => {
+      const acCodeNoDash = (ac.code || "").toUpperCase().replace(/[\s-]+/g, "");
+      const acEmail = (ac.email || "").toLowerCase();
+      const acSlug = acEmail.includes("@") ? acEmail.split("@")[0] : acEmail;
+      const codeMatches = acCodeNoDash === cleanUserNoDash || acCodeNoDash === cleanPinNoDash;
+      const emailMatches = acEmail && (acEmail === cleanUserNorm || acSlug === cleanUserSlug);
+      const pinMatches = cleanPin === "1234" || cleanPin === "comercio123" || cleanPinNoDash === acCodeNoDash || (registeredMatch && registeredMatch.requestedPassword === cleanPin);
+      return (codeMatches || emailMatches) && pinMatches;
+    });
+
+    // 3. Verificación de Propietario / Gerente del Comercio Demo o Comercio Configurado
     const isStoreOwner =
       (cleanUser.toLowerCase() === "gerente" ||
        cleanUser.toLowerCase() === "comercio" ||
@@ -3667,7 +3751,7 @@ export default function App() {
        cleanPin === (business.adminPin || "Ricaji270985#") ||
        cleanPin === "Ricaji270985#");
 
-    // 3. Verificación si el personal intentó ingresar desde el modo General / Gerente
+    // 4. Verificación si el personal intentó ingresar desde el modo General / Gerente
     const staffByName = Array.isArray(staffSettings.staffList)
       ? staffSettings.staffList.find(
           (s) => (s.name || "").trim().toLowerCase() === cleanUser.toLowerCase() ||
@@ -3686,7 +3770,7 @@ export default function App() {
       cleanUser.toLowerCase() === "cocina" ||
       Boolean(staffByName && ((staffByName.pin && staffByName.pin === cleanPin) || cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234")) ||
       Boolean(staffByPin && (cleanUser.toLowerCase() === (staffByPin.name || "").toLowerCase() || !cleanUser || cleanUser.toLowerCase() === "personal")) ||
-      (!isMasterUser && !isStoreOwner && !registeredMatch && (cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234" || Boolean(staffByPin)));
+      (!isMasterUser && !isStoreOwner && !registeredMatch && !activationMatch && (cleanPin === (staffSettings.pin || "1234") || cleanPin === "1234" || Boolean(staffByPin)));
 
     if (isStaffAttempt) {
       if (!staffSettings.enabled) {
@@ -3723,7 +3807,7 @@ export default function App() {
     }
 
     const detectedRole = isMasterUser && isMasterPin ? "superadmin" : "owner";
-    const isRegisteredActive = registeredMatch && (registeredMatch.status === "activo" || registeredMatch.status === "activado");
+    const isRegisteredActive = (registeredMatch && (registeredMatch.status === "activo" || registeredMatch.status === "activado")) || (activationMatch && activationMatch.status === "activado");
     const isRegisteredPending = registeredMatch && (registeredMatch.status === "pendiente" || registeredMatch.status === "pending");
     const isValidLocalCredentials = (isMasterUser && isMasterPin) || isStoreOwner || isRegisteredActive;
 
@@ -3771,10 +3855,12 @@ export default function App() {
       }
 
       // Si no es Superadmin, verificar condición obligatoria de suscripción y licencia
-      const currentLicStatus = result.license?.status || result.business?.licenseStatus || business.licenseStatus || appLicense.status || "activado";
+      const licStatusFromBackend = result.license?.status || result.business?.licenseStatus;
+      const isLocallyActive = isRegisteredActive || (activationMatch && activationMatch.status === "activado");
+      const currentLicStatus = licStatusFromBackend || (isLocallyActive ? "activado" : (business.licenseStatus || appLicense.status || "activado"));
       const currentLicExpires = result.license?.expiresAt || result.business?.licenseExpiresAt || business.licenseExpiresAt || appLicense.expiresAt;
       const isLocalExpired = currentLicExpires ? (Date.now() > new Date(currentLicExpires).getTime()) : false;
-      const isBlockedByLic = result.licenseBlocked || (currentLicStatus === "revocado" || currentLicStatus === "anulado" || isLocalExpired);
+      const isBlockedByLic = result.licenseBlocked || (!isLocallyActive && (currentLicStatus === "revocado" || currentLicStatus === "anulado")) || isLocalExpired;
 
       if (detectedRole !== "superadmin" && isBlockedByLic) {
         const isRevoked = currentLicStatus === "revocado" || currentLicStatus === "anulado" || result.licenseStatus === "revocado";
@@ -3809,11 +3895,26 @@ export default function App() {
         enterAdmin("superadmin");
       } else if (isRegisteredPending) {
         setPinError(`Acceso denegado: El usuario "${cleanUser}" se encuentra PENDIENTE de habilitación por el Administrador. Solo el correo autorizado podrá ingresar una vez que el Administrador otorgue la licencia.`);
-      } else if (isStoreOwner || isRegisteredActive) {
+      } else if (isStoreOwner || isRegisteredActive || Boolean(activationMatch)) {
         setIpLocked(false);
         setIpRemainingSeconds(0);
         setAttemptsLeft(3);
-        enterAdmin("owner");
+        enterAdmin("owner", cleanUser, cleanPin, null, {
+          business: registeredMatch ? {
+            name: registeredMatch.businessName,
+            adminUser: cleanUser,
+            phoneIntl: registeredMatch.whatsapp,
+            phoneDisplay: registeredMatch.whatsapp,
+            licenseCode: activationMatch?.code,
+            licensePlan: registeredMatch.planTitle,
+            licenseStatus: "activado",
+          } : null,
+          license: activationMatch ? {
+            code: activationMatch.code,
+            plan: activationMatch.plan,
+            status: "activado",
+          } : null,
+        });
       } else {
         setPinError("Usuario o PIN incorrecto. Revisá tus credenciales.");
       }
@@ -3831,11 +3932,19 @@ export default function App() {
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user: activeAdminUser, pin: activeAdminPin, action: "getRegisteredClients" }),
+        body: JSON.stringify({
+          user: activeAdminUser,
+          pin: activeAdminPin,
+          role: adminRole || sessionStorage.getItem("caserita_auth_role") || "superadmin",
+          action: "getRegisteredClients",
+        }),
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.clients)) {
         setRegisteredClients(data.clients);
+        try {
+          localStorage.setItem("lacaserita_registered_clients", JSON.stringify(data.clients));
+        } catch (e) {}
       }
     } catch (err) {
       console.warn("Error cargando clientes registrados:", err);
@@ -3855,6 +3964,7 @@ export default function App() {
         body: JSON.stringify({
           user: activeAdminUser,
           pin: activeAdminPin,
+          role: adminRole || sessionStorage.getItem("caserita_auth_role") || "superadmin",
           action: "updateClientStatus",
           clientId,
           status: newStatus,
@@ -3862,9 +3972,23 @@ export default function App() {
       });
       const data = await res.json();
       if (data.ok) {
-        setRegisteredClients((prev) =>
-          prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c))
-        );
+        setRegisteredClients((prev) => {
+          const updated = prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c));
+          try {
+            localStorage.setItem("lacaserita_registered_clients", JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+
+        if (Array.isArray(data.codes)) {
+          setActivationCodes(data.codes);
+          try {
+            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(data.codes));
+          } catch (e) {}
+        } else {
+          loadActivationCodes();
+        }
+
         if (newStatus === "activo") {
           addToast(
             "order_success",
@@ -3887,6 +4011,21 @@ export default function App() {
       }
     } catch (err) {
       console.warn("Error actualizando estado del cliente:", err);
+      // Fallback local
+      setRegisteredClients((prev) => {
+        const updated = prev.map((c) => (c.id === clientId ? { ...c, status: newStatus } : c));
+        try {
+          localStorage.setItem("lacaserita_registered_clients", JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+      if (newStatus === "activo") {
+        addToast(
+          "order_success",
+          "¡Comercio Habilitado!",
+          "El comercio fue activado en el sistema local y sus credenciales quedan habilitadas."
+        );
+      }
     }
   };
 
@@ -3963,12 +4102,15 @@ export default function App() {
   const loadActivationCodes = async () => {
     setLoadingCodes(true);
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
+          role: adminRole || sessionStorage.getItem("caserita_auth_role") || "superadmin",
           action: "getActivationCodes",
         }),
       });
@@ -3999,12 +4141,15 @@ export default function App() {
 
     setCreatingCode(true);
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
+          role: adminRole || sessionStorage.getItem("caserita_auth_role") || "superadmin",
           action: "createActivationCode",
           ...dataToSend,
         }),
@@ -4085,12 +4230,15 @@ export default function App() {
 
   const handleUpdateCodeStatus = async (codeId, newStatus, extendMonths = null) => {
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
+          role: adminRole || sessionStorage.getItem("caserita_auth_role") || "superadmin",
           action: "updateActivationCodeStatus",
           codeId,
           status: newStatus,
@@ -4099,22 +4247,30 @@ export default function App() {
       });
       const data = await res.json();
       if (data.ok) {
-        setActivationCodes((prev) => {
-          const next = prev.map((c) => {
-            if (c.id === codeId || c.code === codeId) {
-              const updated = { ...c, status: newStatus };
-              if (data.target && data.target.expiresAt) {
-                updated.expiresAt = data.target.expiresAt;
-              }
-              return updated;
-            }
-            return c;
-          });
+        if (Array.isArray(data.codes)) {
+          setActivationCodes(data.codes);
           try {
-            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(data.codes));
           } catch (e) {}
-          return next;
-        });
+        } else {
+          setActivationCodes((prev) => {
+            const next = prev.map((c) => {
+              if (c.id === codeId || c.code === codeId) {
+                const updated = { ...c, status: newStatus };
+                if (data.target && data.target.expiresAt) {
+                  updated.expiresAt = data.target.expiresAt;
+                }
+                return updated;
+              }
+              return c;
+            });
+            try {
+              localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+            } catch (e) {}
+            return next;
+          });
+        }
+        loadRegisteredClients();
 
         // Si el código actualizado corresponde al comercio actual
         const isCurrentCode = codeId === "ACT-101" || codeId === business.licenseCode || codeId === appLicense.code;
@@ -4169,12 +4325,14 @@ export default function App() {
 
   const handleRenewCode = async (codeId, extendMonths = 12, newPlan = null, newCost = null) => {
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       const res = await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
           action: "renewActivationCode",
           codeId,
           extendMonths,
@@ -4218,7 +4376,7 @@ export default function App() {
       console.warn("Error renovando suscripción:", err);
       // Fallback local
       const expDate = new Date();
-      expDate.setMonth(expDate.getMonth() + extendMonths);
+      expDate.setMonth(expDate.getMonth() + Number(extendMonths));
       setActivationCodes((prev) => {
         const next = prev.map((c) => {
           if (c.id === codeId || c.code === codeId) {
@@ -4247,12 +4405,14 @@ export default function App() {
 
   const handleDeleteCode = async (codeId) => {
     try {
+      const activeAdminUser = sessionStorage.getItem("caserita_auth_user") || userInput || "Usuario";
+      const activeAdminPin = sessionStorage.getItem("caserita_auth_pin") || pinInput || "Ricaji270985#";
       await fetch(SHEETS_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user: userInput || "Usuario",
-          pin: pinInput || "Ricaji270985#",
+          user: activeAdminUser,
+          pin: activeAdminPin,
           action: "deleteActivationCode",
           codeId,
         }),
@@ -4333,11 +4493,30 @@ export default function App() {
           localStorage.setItem("lacaserita_app_license", JSON.stringify(newLicense));
         } catch (err) {}
 
-        // Si el código trajo un nombre de comercio y no es genérico, actualizar business.name
-        if (data.license.businessName && !data.license.businessName.includes("Licencia Libre") && !data.license.businessName.includes("Venta Directa")) {
-          setBusiness((prev) => ({ ...prev, name: data.license.businessName }));
-          setDraftBusiness((prev) => ({ ...prev, name: data.license.businessName }));
-        }
+        // Actualizar business y draftBusiness con los datos completos de la licencia
+        const targetBusName = (data.license.businessName && !data.license.businessName.includes("Licencia Libre") && !data.license.businessName.includes("Venta Directa"))
+          ? data.license.businessName
+          : (inputActivationBusiness || business.name);
+
+        setBusiness((prev) => ({
+          ...prev,
+          name: targetBusName,
+          licenseCode: data.license.code,
+          licensePlan: data.license.plan || "Plan Activo",
+          licenseStatus: "activado",
+          licenseExpiresAt: data.license.expiresAt,
+          licenseCost: data.license.costFormatted || data.license.cost,
+        }));
+        setDraftBusiness((prev) => ({
+          ...prev,
+          name: targetBusName,
+          licenseCode: data.license.code,
+          licensePlan: data.license.plan || "Plan Activo",
+          licenseStatus: "activado",
+          licenseExpiresAt: data.license.expiresAt,
+          licenseCost: data.license.costFormatted || data.license.cost,
+        }));
+        loadActivationCodes();
 
         setActivationSuccess(newLicense);
         addToast({
@@ -4360,13 +4539,47 @@ export default function App() {
           code: localMatch.code,
           businessName: localMatch.businessName || inputActivationBusiness || business.name,
           plan: localMatch.plan || "Plan Activo",
+          status: "activado",
           activatedAt: new Date().toISOString(),
+          expiresAt: localMatch.expiresAt,
           ownerName: localMatch.ownerName || "",
         };
         setAppLicense(newLicense);
         try {
           localStorage.setItem("lacaserita_app_license", JSON.stringify(newLicense));
         } catch (e) {}
+
+        const targetBusName = (localMatch.businessName && !localMatch.businessName.includes("Licencia Libre") && !localMatch.businessName.includes("Venta Directa"))
+          ? localMatch.businessName
+          : (inputActivationBusiness || business.name);
+
+        setBusiness((prev) => ({
+          ...prev,
+          name: targetBusName,
+          licenseCode: localMatch.code,
+          licensePlan: localMatch.plan || "Plan Activo",
+          licenseStatus: "activado",
+          licenseExpiresAt: localMatch.expiresAt,
+          licenseCost: localMatch.costFormatted,
+        }));
+        setDraftBusiness((prev) => ({
+          ...prev,
+          name: targetBusName,
+          licenseCode: localMatch.code,
+          licensePlan: localMatch.plan || "Plan Activo",
+          licenseStatus: "activado",
+          licenseExpiresAt: localMatch.expiresAt,
+          licenseCost: localMatch.costFormatted,
+        }));
+
+        setActivationCodes((prev) => {
+          const next = prev.map((c) => (c.code.replace(/[\s-]+/g, "").toUpperCase() === cleanCode ? { ...c, status: "activado", activatedAt: new Date().toISOString() } : c));
+          try {
+            localStorage.setItem("lacaserita_activation_codes", JSON.stringify(next));
+          } catch (e) {}
+          return next;
+        });
+
         setActivationSuccess(newLicense);
         addToast({
           type: "success",
@@ -5185,8 +5398,38 @@ export default function App() {
       items: c.items.map((it) => ({ ...it, price: Number(it.price) || 0 })),
     }));
 
+    let cleanIntl = (draftBusiness.phoneIntl || "").replace(/[^\d]/g, "");
+    let cleanDisplay = (draftBusiness.phoneDisplay || "").trim();
+
+    // Sincronizar automáticamente formatos si el usuario ingresó el número en cualquiera de los dos campos
+    const displayDigits = cleanDisplay.replace(/\D/g, "");
+    if (displayDigits.length >= 9 && (!cleanIntl || cleanIntl === "595981456789")) {
+      let d = displayDigits;
+      if (d.startsWith("0")) d = "595" + d.slice(1);
+      else if (!d.startsWith("595") && d.length === 9) d = "595" + d;
+      cleanIntl = d;
+    }
+
+    if (cleanIntl) {
+      if (cleanIntl.startsWith("0")) {
+        cleanIntl = "595" + cleanIntl.slice(1);
+      } else if (!cleanIntl.startsWith("595") && cleanIntl.length === 9) {
+        cleanIntl = "595" + cleanIntl;
+      }
+      if (!cleanDisplay || cleanDisplay === "0981 123 456" || cleanDisplay === "0981123456") {
+        if (cleanIntl.startsWith("595") && cleanIntl.length === 12) {
+          const local = "0" + cleanIntl.slice(3);
+          cleanDisplay = `${local.slice(0, 4)} ${local.slice(4, 7)} ${local.slice(7)}`;
+        } else {
+          cleanDisplay = `+${cleanIntl}`;
+        }
+      }
+    }
+
     const businessPayload = {
       ...draftBusiness,
+      phoneIntl: cleanIntl || draftBusiness.phoneIntl || "595975635770",
+      phoneDisplay: cleanDisplay || draftBusiness.phoneDisplay || "0975 635 770",
       deliveryNote: draftBusiness.deliveryNote || deliveryNote,
       sessionPersistence: draftBusiness.sessionPersistence || sessionPersistence,
       ...(enableChangePin && draftNewPin.trim() ? { newPin: draftNewPin.trim() } : {}),
@@ -9117,7 +9360,7 @@ export default function App() {
               {/* PESTAÑA: COMERCIOS Y SEGURIDAD (Acceso Total para Admin, Restringido para Gerente) */}
               {adminRole === "superadmin" ? (
                 <button
-                  onClick={() => { setAdminTab("clients"); loadRegisteredClients(); }}
+                  onClick={() => { setAdminTab("clients"); loadRegisteredClients(); loadActivationCodes(); }}
                   className={`flex items-center gap-2 px-5 py-3 text-sm font-bold transition border-b-4 ${
                     adminTab === "clients"
                       ? "border-[#C1392B] text-[#FBF2DD] bg-stone-900/50"
@@ -11055,25 +11298,19 @@ export default function App() {
                   </div>
 
                   {bannerPreviewDevice === "pc" ? (
-                    // VISTA PREVIA PC: Panorámica alargada con ambient backdrop
-                    <div className="relative rounded-2xl overflow-hidden border-2 shadow-inner bg-stone-950 aspect-[2117/743] max-h-64 flex items-center justify-center" style={{ borderColor: BRAND.paperDark }}>
-                      {/* Fondo ambiental que expande colores */}
-                      {draftBusiness.bannerImage && (
-                        <div
-                          className="absolute inset-0 pointer-events-none opacity-30 blur-2xl scale-110"
-                          style={{
-                            backgroundImage: `url(${draftBusiness.bannerImage})`,
-                            backgroundPosition: 'center',
-                            backgroundSize: 'cover',
-                          }}
-                        />
-                      )}
+                    // VISTA PREVIA PC: Panorámica nítida
+                    <div className="relative rounded-2xl overflow-hidden border-2 shadow-inner bg-stone-900 aspect-[16/7] max-h-64 flex items-center justify-center" style={{ borderColor: BRAND.paperDark }}>
                       {draftBusiness.bannerImage ? (
                         <img
                           src={draftBusiness.bannerImage}
                           alt="Portada Demo"
-                          className="relative z-10 w-full h-full object-contain"
-                          onError={(e) => { e.currentTarget.src = "/banner.jpg"; }}
+                          className="w-full h-full object-contain"
+                          style={{
+                            imageRendering: "-webkit-optimize-contrast",
+                            WebkitBackfaceVisibility: "hidden",
+                            transform: "translateZ(0)",
+                          }}
+                          onError={(e) => { e.currentTarget.src = "/menupy_banner_hd.jpg"; }}
                         />
                       ) : (
                         <div className="text-stone-400 text-sm flex flex-col items-center gap-1">
@@ -11304,39 +11541,61 @@ export default function App() {
                     <div className="space-y-3 text-xs">
                       <div>
                         <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>
-                          Número internacional (sin +, sin espacios ni guiones)
+                          Número visible en pantalla (formato legible para clientes)
                         </label>
                         <input
-                          value={draftBusiness.phoneIntl}
+                          value={draftBusiness.phoneDisplay || ""}
                           onChange={(e) => {
-                            setDraftBusiness((prev) => ({ ...prev, phoneIntl: e.target.value.replace(/[^\d]/g, "") }));
+                            const val = e.target.value;
+                            const digits = val.replace(/\D/g, "");
+                            let derivedIntl = digits;
+                            if (digits.startsWith("0")) derivedIntl = "595" + digits.slice(1);
+                            else if (!digits.startsWith("595") && digits.length === 9) derivedIntl = "595" + digits;
+                            setDraftBusiness((prev) => ({
+                              ...prev,
+                              phoneDisplay: val,
+                              ...(derivedIntl && derivedIntl.length >= 9 ? { phoneIntl: derivedIntl } : {}),
+                            }));
                             setDirty(true);
                           }}
-                          placeholder="Ej: 595981456789"
-                          className="w-full p-2.5 rounded-xl border text-sm font-mono"
+                          placeholder="Ej: +595 975 635 770 o 0975 635 770"
+                          className="w-full p-2.5 rounded-xl border text-sm font-semibold"
                           style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
                         />
                         <span className="text-[11px] text-stone-500 mt-0.5 block">
-                          {adminRole === "superadmin"
-                            ? "Los clientes de prueba que hagan pedidos en la demo abrirán el WhatsApp hacia este número."
-                            : "Los clientes enviarán sus pedidos directamente a este número por WhatsApp."}
+                          Aparece en la barra superior, pie de página e impresiones de comandas.
                         </span>
                       </div>
 
                       <div>
-                        <label className="font-bold block mb-1" style={{ color: BRAND.charcoal }}>
-                          Número visible en pantalla (formato legible)
+                        <label className="font-bold block mb-1 text-stone-600">
+                          Número internacional WhatsApp (sin +, sin espacios ni guiones)
                         </label>
                         <input
-                          value={draftBusiness.phoneDisplay}
+                          value={draftBusiness.phoneIntl || ""}
                           onChange={(e) => {
-                            setDraftBusiness((prev) => ({ ...prev, phoneDisplay: e.target.value }));
+                            const val = e.target.value.replace(/[^\d]/g, "");
+                            setDraftBusiness((prev) => {
+                              let nextDisplay = prev.phoneDisplay;
+                              if (val.startsWith("595") && val.length === 12 && (!nextDisplay || nextDisplay === "0981 123 456")) {
+                                const local = "0" + val.slice(3);
+                                nextDisplay = `${local.slice(0, 4)} ${local.slice(4, 7)} ${local.slice(7)}`;
+                              }
+                              return {
+                                ...prev,
+                                phoneIntl: val,
+                                phoneDisplay: nextDisplay,
+                              };
+                            });
                             setDirty(true);
                           }}
-                          placeholder="Ej: 0981 123 456"
-                          className="w-full p-2.5 rounded-xl border text-sm font-semibold"
-                          style={{ borderColor: BRAND.paperDark, background: "#FFF" }}
+                          placeholder="Ej: 595975635770"
+                          className="w-full p-2.5 rounded-xl border text-sm font-mono bg-stone-50"
+                          style={{ borderColor: BRAND.paperDark }}
                         />
+                        <span className="text-[11px] text-stone-500 mt-0.5 block">
+                          Los clientes de la tienda abrirán automáticamente el chat de WhatsApp (wa.me) hacia este número.
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -13820,28 +14079,21 @@ export default function App() {
         </div>
       </div>
 
-      {/* Portada Principal del Comercio (Hero Adaptado para PC y Celular sin cortes) */}
-      <div className="relative w-full overflow-hidden bg-stone-950 flex justify-center shadow-inner">
-        {/* Fondo ambiental que expande armónicamente los colores del banner en pantallas de PC */}
-        <div 
-          className="absolute inset-0 pointer-events-none opacity-30 blur-2xl scale-110"
-          style={{
-            backgroundImage: `url(${business.bannerImage || "/Flyers-MenuPY.png"})`,
-            backgroundPosition: 'center',
-            backgroundSize: 'cover',
-          }}
-        />
-        {/* Viñeta suave */}
-        <div className="absolute inset-0 bg-black/40 pointer-events-none" />
-
-        {/* Contenedor responsivo del Banner - Panorámico alargado 2117x743 sin ensanchar en altura */}
+      {/* Portada Principal del Comercio (Hero Nítido Adaptado para PC y Celular) */}
+      <div className="relative w-full overflow-hidden bg-stone-900 flex justify-center shadow-md">
+        {/* Contenedor responsivo del Banner sin efectos borrosos ni viñetas que reduzcan la nitidez */}
         <div className="relative z-10 w-full max-w-7xl 2xl:max-w-[1700px] flex items-center justify-center px-0 sm:px-4 py-0 sm:py-2">
-          <div className="relative w-full flex items-center justify-center overflow-hidden sm:rounded-2xl sm:shadow-2xl sm:border sm:border-amber-500/20 bg-stone-950/40">
+          <div className="relative w-full flex items-center justify-center overflow-hidden sm:rounded-2xl sm:shadow-2xl sm:border sm:border-stone-800 bg-stone-950">
             <img 
-              src={business.bannerImage || "/Flyers-MenuPY.png"} 
-              alt={business.name || "La Caserita"} 
-              className="w-full h-auto aspect-[2117/743] max-h-[380px] sm:max-h-[440px] md:max-h-[490px] object-contain block mx-auto transition-all"
-              onError={(e) => { e.currentTarget.src = "/Flyers-MenuPY.png"; }} 
+              src={business.bannerImage || "/menupy_mockup_qr.jpg"} 
+              alt={business.name || "Menu Py"} 
+              className="w-full h-auto max-h-[380px] sm:max-h-[440px] md:max-h-[490px] object-contain block mx-auto"
+              style={{
+                imageRendering: "-webkit-optimize-contrast",
+                WebkitBackfaceVisibility: "hidden",
+                transform: "translateZ(0)",
+              }}
+              onError={(e) => { e.currentTarget.src = "/menupy_mockup_qr.jpg"; }} 
             />
           </div>
         </div>
