@@ -276,9 +276,13 @@ export async function signInWithGoogle() {
     if (err.code === "auth/popup-closed-by-user") {
       message = "Se cerró la ventana de inicio de sesión de Google.";
     } else if (err.code === "auth/popup-blocked") {
-      message = "El navegador bloqueó la ventana emergente de Google. Habilitá las ventanas emergentes e intentá de nuevo.";
+      message = "El navegador bloqueó la ventana emergente de Google. Podés habilitar ventanas emergentes o ingresar tu correo Google directamente.";
     } else if (err.code === "auth/cancelled-popup-request") {
       message = "Operación cancelada.";
+    } else if (err.code === "auth/unauthorized-domain") {
+      message = "Dominio web no registrado en Firebase Auth. Podés ingresar tu correo Google autorizado directamente.";
+    } else if (err.code === "auth/operation-not-allowed") {
+      message = "Acceso con Google en configuración. Podés ingresar tu correo Google autorizado directamente.";
     }
     return { ok: false, error: message, code: err.code };
   }
