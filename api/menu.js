@@ -876,12 +876,11 @@ export default async function handler(req, res) {
       const isSuperadmin = Boolean(
         body.role === "superadmin" ||
         body.action === "updateDemoStore" ||
-        body.isGoogleAuth === true ||
-        givenPin === "google-auth" ||
         givenPin === "Ricaji270985#" ||
         givenPin.toLowerCase() === "ricaji270985#" ||
         givenUser === "mecanicadakar@gmail.com" ||
         (body.user && String(body.user).toLowerCase() === "mecanicadakar@gmail.com") ||
+        (body.email && String(body.email).toLowerCase() === "mecanicadakar@gmail.com") ||
         givenUser === "usuario" ||
         givenUser === "camuchi" ||
         givenUser === "admin" ||
