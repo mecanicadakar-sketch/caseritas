@@ -738,7 +738,11 @@ export default async function handler(req, res) {
             (s.email && s.email.toLowerCase() === email) ||
             (s.ownerEmail && s.ownerEmail.toLowerCase() === email) ||
             (s.business?.email && s.business.email.toLowerCase() === email) ||
-            (s.business?.ownerEmail && s.business.ownerEmail.toLowerCase() === email)
+            (s.business?.ownerEmail && s.business.ownerEmail.toLowerCase() === email) ||
+            (s.business?.adminUser && s.business.adminUser.toLowerCase() === email) ||
+            (s.adminUser && s.adminUser.toLowerCase() === email) ||
+            (s.username && s.username.toLowerCase() === email) ||
+            (s.id && s.id.toLowerCase() === `store_${email.split("@")[0]}`)
           ) {
             if (s.business?.licenseCode && s.business?.licenseStatus !== "revocado" && s.business?.licenseStatus !== "anulado") {
               associatedStore = s;
@@ -753,27 +757,59 @@ export default async function handler(req, res) {
           const pendingReg = (db.commercialRegistrations || []).find(
             (r) =>
               ((r.requestedUser && r.requestedUser.toLowerCase() === email) ||
-               (r.email && r.email.toLowerCase() === email)) &&
+               (r.email && r.email.toLowerCase() === email) ||
+               (r.requestedUser && r.requestedUser.toLowerCase() === email.split("@")[0])) &&
               (r.status === "pendiente" || r.status === "pending")
           );
           if (pendingReg) {
             return sendJson(res, 403, {
               ok: false,
               isPendingApproval: true,
-              error: `Acceso denegado: Tu comercio (${pendingReg.businessName}) está registrado con el usuario ${email}, pero aún se encuentra PENDIENTE de habilitación por el Administrador. Una vez que el Administrador otorgue la licencia a este email, podrás ingresar a tu panel de Gerente.`,
+              error: `Acceso denegado: El comercio (${pendingReg.businessName || "registrado"}) se encuentra en proceso de habilitación por el Administrador. Podrás ingresar una vez que se otorgue la licencia.`,
             });
           }
 
-          const reg = db.commercialRegistrations.find(
+          const reg = (db.commercialRegistrations || []).find(
             (r) =>
               ((r.email && r.email.toLowerCase() === email) ||
-               (r.requestedUser && r.requestedUser.toLowerCase() === email)) &&
-              (r.status === "activo" || r.status === "activado")
+               (r.requestedUser && r.requestedUser.toLowerCase() === email) ||
+               (r.requestedUser && r.requestedUser.toLowerCase() === email.split("@")[0])) &&
+              (r.status === "activo" || r.status === "activado" || r.status === "active")
           );
-          if (reg && reg.requestedUser) {
-            const candidate = db.stores[reg.requestedUser.toLowerCase()];
+          if (reg) {
+            const userSlug = (reg.requestedUser || email.split("@")[0]).toLowerCase();
+            const candidate = db.stores[userSlug] || db.stores[`store_${userSlug}`];
             if (candidate && candidate.business?.licenseCode) {
               associatedStore = candidate;
+            } else {
+              const uniqueStoreId = `store_${userSlug}`;
+              associatedStore = db.stores[uniqueStoreId] || {
+                id: uniqueStoreId,
+                username: userSlug,
+                email: email,
+                ownerEmail: email,
+                pin: reg.requestedPassword || reg.pin || "1234",
+                status: "activo",
+                business: {
+                  name: reg.businessName || (name ? `Comercio de ${name}` : `Comercio ${userSlug}`),
+                  slogan: "Pedí online - Calidad y sabor",
+                  phoneIntl: reg.whatsapp || "595981456789",
+                  phoneDisplay: reg.whatsapp || "0981 123 456",
+                  address: reg.city || "Encarnación, Paraguay",
+                  bannerImage: "/banner.jpg",
+                  deliveryNote: "El costo de envío se coordina según la zona",
+                  adminUser: email,
+                  ownerEmail: email,
+                  licenseCode: reg.assignedCode || "LIC-REGISTRADO-ACTIVO",
+                  licensePlan: reg.planTitle || reg.plan || "Plan Comercio",
+                  licenseCost: reg.amountGs ? `${reg.amountGs.toLocaleString("es-PY")} Gs.` : "450.000 Gs.",
+                  licenseStatus: "activado",
+                },
+                menu: DEFAULT_MENU_LOSAMIGOS,
+                orders: [],
+              };
+              db.stores[uniqueStoreId] = associatedStore;
+              saveDb(db);
             }
           }
         }
