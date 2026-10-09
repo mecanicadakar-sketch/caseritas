@@ -1539,7 +1539,8 @@ export default function App() {
   useEffect(() => {
     const unsub = onAuthChange(async (user) => {
       if (user) {
-        const isSuper = user.email === "mecanicadakar@gmail.com";
+        const userEmail = (user.email || "").trim().toLowerCase();
+        const isSuper = userEmail === "mecanicadakar@gmail.com";
         const hasAdminRole = sessionStorage.getItem("caserita_auth_role");
         
         // Solo cargar datos si el usuario tiene una sesión de administración autorizada
@@ -1633,7 +1634,8 @@ export default function App() {
       }
 
       // 1. Acceso Exclusivo para Administrador General Maestro (Superadmin)
-      const isMasterGoogle = gUser.email === "mecanicadakar@gmail.com";
+      const userEmail = (gUser.email || "").trim().toLowerCase();
+      const isMasterGoogle = userEmail === "mecanicadakar@gmail.com";
       if (isMasterGoogle) {
         setGoogleUser(gUser);
         try {
@@ -1652,7 +1654,7 @@ export default function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               action: "googleLogin",
-              email: gUser.email,
+              email: userEmail,
               name: gUser.displayName,
               uid: gUser.uid,
               photoURL: gUser.photoURL,
@@ -1666,11 +1668,11 @@ export default function App() {
         setIpRemainingSeconds(0);
         setAttemptsLeft(5);
         fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
-        enterAdmin("superadmin", gUser.email, "Ricaji270985#", null, masterStoreData);
+        enterAdmin("superadmin", userEmail, "Ricaji270985#", null, masterStoreData);
         addToast(
           "order_success",
           `¡Bienvenido, Administrador General!`,
-          `Acceso maestro verificado concedido a MenuPY (${gUser.email}).`
+          `Acceso maestro verificado concedido a MenuPY (${userEmail}).`
         );
         return;
       }
@@ -1686,7 +1688,7 @@ export default function App() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "googleLogin",
-            email: gUser.email,
+            email: userEmail,
             name: gUser.displayName,
             uid: gUser.uid,
             photoURL: gUser.photoURL,
@@ -1694,7 +1696,24 @@ export default function App() {
           }),
         });
         const data = await resp.json();
-        if (data.ok && data.role === "owner" && data.license) {
+        if (data.ok && data.role === "superadmin") {
+          setGoogleUser(gUser);
+          try {
+            sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
+            sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
+            sessionStorage.setItem("caserita_auth_user", "usuario");
+            sessionStorage.setItem("caserita_auth_pin", "Ricaji270985#");
+            sessionStorage.setItem("caserita_auth_role", "superadmin");
+            sessionStorage.setItem("caserita_auth_store_id", "losamigos");
+          } catch {}
+          setIpLocked(false);
+          setIpRemainingSeconds(0);
+          setAttemptsLeft(5);
+          fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
+          enterAdmin("superadmin", userEmail, "Ricaji270985#", null, data);
+          addToast("order_success", `¡Bienvenido, Administrador General!`, `Acceso concedido (${userEmail}).`);
+          return;
+        } else if (data.ok && (data.role === "owner" || data.license)) {
           licenseVerified = true;
           storeData = data;
         } else if (data.isPendingApproval) {
@@ -1720,26 +1739,26 @@ export default function App() {
       if (!licenseVerified) {
         try {
           const profile = await getUserProfileFromFirestore(gUser.uid);
-          if (profile && profile.licenseCode && (profile.licenseStatus === "activado" || profile.licenseStatus === "activo")) {
+          if (profile && (profile.licenseCode || profile.role === "owner" || profile.role === "superadmin") && (profile.licenseStatus === "activado" || profile.licenseStatus === "activo" || !profile.licenseStatus)) {
             licenseVerified = true;
             storeData = {
               storeId: profile.storeId || `store_${gUser.uid}`,
-              role: "owner",
+              role: profile.role === "superadmin" ? "superadmin" : "owner",
               business: {
-                name: profile.businessName || `Comercio de ${gUser.displayName || gUser.email}`,
+                name: profile.businessName || `Comercio de ${gUser.displayName || userEmail}`,
                 slogan: profile.slogan || "Pedí online - Calidad y sabor",
                 bannerImage: profile.bannerImage || "/banner.jpg",
                 phoneIntl: profile.phoneIntl || "",
                 phoneDisplay: profile.phoneDisplay || "",
                 address: profile.address || "Encarnación, Paraguay",
                 deliveryNote: profile.deliveryNote || "El costo de envío se coordina según la zona",
-                adminUser: gUser.email,
-                licenseCode: profile.licenseCode,
+                adminUser: userEmail,
+                licenseCode: profile.licenseCode || "LIC-ACTIVA",
                 licensePlan: profile.licensePlan || "Plan Anual PRO",
                 licenseStatus: "activado",
               },
               license: {
-                code: profile.licenseCode,
+                code: profile.licenseCode || "LIC-ACTIVA",
                 plan: profile.licensePlan || "Plan Anual PRO",
                 status: "activado",
               },
@@ -1748,25 +1767,91 @@ export default function App() {
         } catch (e) {}
       }
 
-      // c) Verificar en códigos locales de activación
+      // c) Verificar en clientes comerciales registrados localmente
+      if (!licenseVerified) {
+        const userSlug = userEmail.split("@")[0].replace(/[^a-z0-9_-]/gi, "");
+        const regClient = (registeredClients || []).find((c) => {
+          const cEmail = (c.email || "").toLowerCase().trim();
+          const cUser = (c.requestedUser || c.requested_user || "").toLowerCase().trim();
+          return cEmail === userEmail || cUser === userEmail || cUser === userSlug;
+        });
+
+        if (regClient) {
+          if (regClient.status === "pendiente" || regClient.status === "pending") {
+            setPinError("Acceso denegado: El comercio se encuentra en proceso de habilitación por el Administrador. Podrás ingresar una vez que se otorgue la licencia.");
+            signOut(auth).catch(() => {});
+            sessionStorage.removeItem("caserita_google_user");
+            sessionStorage.removeItem("caserita_auth_google_uid");
+            setGoogleUser(null);
+            return;
+          }
+          licenseVerified = true;
+          storeData = {
+            storeId: regClient.id || `store_${userSlug}`,
+            role: "owner",
+            business: {
+              name: regClient.businessName || `Comercio de ${gUser.displayName || userEmail}`,
+              slogan: "Pedí online - Calidad y sabor",
+              bannerImage: "/banner.jpg",
+              phoneIntl: regClient.whatsapp || "",
+              phoneDisplay: regClient.whatsapp || "",
+              address: regClient.city || "Encarnación, Paraguay",
+              deliveryNote: "El costo de envío se coordina según la zona",
+              adminUser: userEmail,
+              licenseCode: regClient.assignedCode || "LIC-COMERCIO-ACTIVO",
+              licensePlan: regClient.planTitle || regClient.plan || "Plan Comercio",
+              licenseStatus: "activado",
+            },
+            license: {
+              code: regClient.assignedCode || "LIC-COMERCIO-ACTIVO",
+              plan: regClient.planTitle || regClient.plan || "Plan Comercio",
+              status: "activado",
+            },
+          };
+        }
+
+        // Verificar si es el comercio configurado actual
+        const currentBizAdmin = (business.adminUser || "").toLowerCase().trim();
+        const currentBizOwner = (business.ownerEmail || business.email || "").toLowerCase().trim();
+        if (!licenseVerified && (userEmail === currentBizAdmin || userEmail === currentBizOwner || userSlug === currentBizAdmin)) {
+          licenseVerified = true;
+          storeData = {
+            storeId: currentStoreId || "losamigos",
+            role: "owner",
+            business: {
+              ...business,
+              adminUser: userEmail,
+              licenseStatus: "activado",
+            },
+            license: {
+              code: business.licenseCode || "LIC-ACTIVA",
+              plan: business.licensePlan || "Plan Comercio",
+              status: "activado",
+            },
+          };
+        }
+      }
+
+      // d) Verificar en códigos locales de activación
       if (!licenseVerified) {
         const localCode = activationCodes.find(
-          (c) => c.email && c.email.toLowerCase() === gUser.email.toLowerCase() && c.status === "activado"
+          (c) => c.email && c.email.toLowerCase().trim() === userEmail && c.status === "activado"
         );
         if (localCode) {
           licenseVerified = true;
+          const userSlug = userEmail.split("@")[0].replace(/[^a-z0-9_-]/gi, "");
           storeData = {
-            storeId: `store_${gUser.email.split("@")[0].replace(/[^a-z0-9_-]/gi, "").toLowerCase()}`,
+            storeId: `store_${userSlug}`,
             role: "owner",
             business: {
-              name: localCode.businessName || `Comercio de ${gUser.displayName || gUser.email}`,
+              name: localCode.businessName || `Comercio de ${gUser.displayName || userEmail}`,
               slogan: "Pedí online - Calidad y sabor",
               bannerImage: "/banner.jpg",
               phoneIntl: localCode.whatsapp || "",
               phoneDisplay: "",
               address: "Encarnación, Paraguay",
               deliveryNote: "El costo de envío se coordina según la zona",
-              adminUser: gUser.email,
+              adminUser: userEmail,
               licenseCode: localCode.code,
               licensePlan: localCode.plan,
               licenseStatus: "activado",
@@ -1780,15 +1865,16 @@ export default function App() {
         }
       }
 
-      // 3. SI TIENE LICENCIA ACTIVA VINCULADA: CONCEDER ACCESO COMO GERENTE
+      // 3. SI TIENE LICENCIA ACTIVA VINCULADA: CONCEDER ACCESO COMO GERENTE O ADMINISTRADOR
       if (licenseVerified && storeData) {
+        const targetRole = storeData.role === "superadmin" ? "superadmin" : "owner";
         setGoogleUser(gUser);
         try {
           sessionStorage.setItem("caserita_google_user", JSON.stringify(gUser));
           sessionStorage.setItem("caserita_auth_google_uid", gUser.uid);
-          sessionStorage.setItem("caserita_auth_user", gUser.email);
-          sessionStorage.setItem("caserita_auth_pin", "google-auth");
-          sessionStorage.setItem("caserita_auth_role", "owner");
+          sessionStorage.setItem("caserita_auth_user", targetRole === "superadmin" ? "usuario" : userEmail);
+          sessionStorage.setItem("caserita_auth_pin", targetRole === "superadmin" ? "Ricaji270985#" : "google-auth");
+          sessionStorage.setItem("caserita_auth_role", targetRole);
           if (storeData.storeId) {
             sessionStorage.setItem("caserita_auth_store_id", storeData.storeId);
           }
@@ -1798,11 +1884,13 @@ export default function App() {
         setIpRemainingSeconds(0);
         setAttemptsLeft(5);
         fetch(`${SHEETS_API_URL}?action=resetIpStatus`).catch(() => {});
-        enterAdmin("owner", gUser.email, "google-auth", null, storeData);
+        enterAdmin(targetRole, userEmail, targetRole === "superadmin" ? "Ricaji270985#" : "google-auth", null, storeData);
         addToast(
           "order_success",
-          `¡Bienvenido, ${gUser.displayName || "Gerente"}!`,
-          `Licencia activa verificada (${storeData.license?.code || storeData.business?.licenseCode || "Autorizada"}).`
+          `¡Bienvenido, ${gUser.displayName || (targetRole === "superadmin" ? "Administrador" : "Gerente")}!`,
+          targetRole === "superadmin"
+            ? `Acceso maestro verificado concedido a MenuPY.`
+            : `Licencia activa verificada (${storeData.license?.code || storeData.business?.licenseCode || "Autorizada"}).`
         );
         return;
       }
@@ -1815,8 +1903,8 @@ export default function App() {
       setGoogleUser(null);
 
       setGoogleLicenseModal({
-        email: gUser.email,
-        displayName: gUser.displayName || gUser.email,
+        email: userEmail,
+        displayName: gUser.displayName || userEmail,
         uid: gUser.uid,
         photoURL: gUser.photoURL,
       });
@@ -3714,7 +3802,10 @@ export default function App() {
     const cleanPin = pinInput.trim();
 
     // 1. Verificación preliminar de Administrador Único de la Plataforma (Superadmin)
-    const isMasterUser = cleanUser.toLowerCase() === "usuario" || cleanUser.toLowerCase() === "camuchi";
+    const isMasterUser =
+      cleanUser.toLowerCase() === "usuario" ||
+      cleanUser.toLowerCase() === "camuchi" ||
+      cleanUser.toLowerCase() === "mecanicadakar@gmail.com";
     const isMasterPin = cleanPin === "Ricaji270985#";
 
     if (ipLocked && !(isMasterUser && isMasterPin)) {
@@ -3865,7 +3956,9 @@ export default function App() {
        cleanUser.toLowerCase() === "menupy" ||
        cleanUser.toLowerCase() === "losamigos" ||
        cleanUser.toLowerCase() === "demo" ||
-       cleanUser.toLowerCase() === (business.adminUser || "usuario").toLowerCase()) &&
+       cleanUser.toLowerCase() === (business.adminUser || "usuario").toLowerCase() ||
+       cleanUser.toLowerCase() === (business.ownerEmail || "").toLowerCase() ||
+       cleanUser.toLowerCase() === (business.email || "").toLowerCase()) &&
       (cleanPin === "comercio123" ||
        cleanPin === "1234" ||
        cleanPin === (business.adminPin || "Ricaji270985#") ||
@@ -8671,15 +8764,15 @@ export default function App() {
             </div>
           </div>
 
-          <h2 className="slab text-2xl sm:text-3xl text-center mb-1 uppercase tracking-wider font-black text-stone-900">
-            {ipLocked ? "ACCESO BLOQUEADO" : "PANEL DE CONTROL"}
+          <h2 className="text-xl sm:text-2xl text-center mb-1 font-bold tracking-normal text-stone-800">
+            {ipLocked ? "Acceso Bloqueado" : "PANEL DE CONTROL"}
           </h2>
-          <p className="text-center text-xs text-stone-700 mb-4 font-bold uppercase tracking-wide">
+          <p className="text-center text-xs text-stone-600 mb-4 font-normal">
             {loginMode === "owner"
-              ? "ACCESO EXCLUSIVO PARA LA GERENCIA DEL COMERCIO"
+              ? "Acceso exclusivo para la gerencia del comercio."
               : loginMode === "staff"
-              ? "ACCESO OPERATIVO PARA EL PERSONAL DE SALÓN Y COCINA"
-              : "ACCESO MAESTRO PARA LA ADMINISTRACIÓN CENTRAL"}
+              ? "Acceso operativo para el personal de salón y cocina."
+              : "Acceso maestro para la administración general."}
           </p>
 
           {/* BANNER DE BLOQUEO DE IP POR 3 INTENTOS FALLIDOS */}
@@ -8687,7 +8780,7 @@ export default function App() {
             <div className="p-4 rounded-2xl border-2 border-red-500 bg-red-50 text-red-900 mb-5 shadow-sm">
               <div className="flex items-center gap-2 font-black text-sm mb-1 text-red-700">
                 <ShieldAlert size={18} />
-                <span>DIRECCIÓN IP BLOQUEADA TEMPORALMENTE</span>
+                <span>Dirección IP bloqueada temporalmente</span>
               </div>
               <p className="text-xs leading-relaxed mb-3">
                 Se superó el límite de <b>3 intentos fallidos consecutivos</b> de PIN desde tu dirección IP. El acceso fue bloqueado automáticamente durante 15 minutos para proteger el comercio contra accesos no autorizados.
@@ -8727,10 +8820,10 @@ export default function App() {
           {/* Opción Nivel 1: Acceso a Clientes */}
           <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 shadow-sm">
             <div className="min-w-0 flex-1">
-              <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5 uppercase tracking-wide">
+              <span className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
                 <ShoppingBag size={15} className="text-emerald-700 flex-shrink-0" />
-                <span>1. ACCESO A CLIENTES</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900 uppercase">PÚBLICO</span>
+                <span>1. Acceso a Clientes</span>
+                <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900">Público</span>
               </span>
               <span className="text-[11px] text-emerald-800 block leading-tight mt-0.5">
                 Limitado a realizar pedidos y ver el estado de su comanda en tiempo real.
@@ -8739,17 +8832,17 @@ export default function App() {
             <button
               type="button"
               onClick={() => setView("menu")}
-              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs transition flex-shrink-0 shadow active:scale-95 uppercase tracking-wider"
+              className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition flex-shrink-0 shadow active:scale-95 cursor-pointer"
             >
-              PEDIR EN CARTA
+              Pedir en Carta
             </button>
           </div>
 
           {/* Selector Resaltado de Solapas: GERENTE, PERSONAL, ADMIN */}
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[11px] font-black uppercase tracking-wider text-stone-800">
-                SOLAPAS DE ACCESO:
+              <span className="text-[11px] font-bold text-stone-700">
+                Solapas de acceso:
               </span>
               <span
                 className="text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-xs"
@@ -8759,7 +8852,7 @@ export default function App() {
                   border: `1.5px solid ${loginMode === "owner" ? "#FCA5A5" : loginMode === "staff" ? "#93C5FD" : "#FDE68A"}`,
                 }}
               >
-                {loginMode === "owner" ? "👔 SOLAPA GERENTE" : loginMode === "staff" ? "👨‍🍳 SOLAPA PERSONAL" : "👑 SOLAPA ADMIN"}
+                {loginMode === "owner" ? "👔 GERENTE" : loginMode === "staff" ? "👨‍🍳 PERSONAL" : "👑 ADMIN"}
               </span>
             </div>
 
@@ -8833,7 +8926,7 @@ export default function App() {
           {loginMode !== "staff" ? (
             <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-stone-300 shadow-md">
               <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="text-xs font-black text-stone-900 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                   <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                     <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -8898,8 +8991,8 @@ export default function App() {
             {loginMode === "staff" ? (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider mb-1 ml-1 text-stone-800">
-                    USUARIO
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1 ml-1 text-stone-800">
+                    Usuario
                   </label>
                   <input
                     key={`staff_usr_${loginFormKey}`}
@@ -8929,8 +9022,8 @@ export default function App() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider mb-1 ml-1 text-stone-800">
-                    INGRESAR PIN OPERATIVO
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1 ml-1 text-stone-800">
+                    Ingresar PIN Operativo
                   </label>
                   <div className="relative">
                     <input
@@ -8974,8 +9067,8 @@ export default function App() {
             ) : (
               <>
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider mb-1 ml-1 text-stone-800">
-                    {loginMode === "owner" ? "USUARIO DE GERENCIA O COMERCIO" : "USUARIO ADMINISTRADOR MAESTRO"}
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1 ml-1 text-stone-800">
+                    {loginMode === "owner" ? "Usuario de Gerencia o Comercio" : "Usuario Administrador Maestro"}
                   </label>
                   <input
                     key={`admin_usr_${loginFormKey}`}
@@ -9005,10 +9098,10 @@ export default function App() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-black uppercase tracking-wider mb-1 ml-1 text-stone-800">
+                  <label className="block text-xs font-bold uppercase tracking-wider mb-1 ml-1 text-stone-800">
                     {loginMode === "owner"
-                      ? "CLAVE / PIN DEL COMERCIO O GERENTE"
-                      : "PIN MAESTRO DE SEGURIDAD"}
+                      ? "Clave / PIN del Comercio o Gerente"
+                      : "PIN Maestro de Seguridad"}
                   </label>
                   <div className="relative">
                     <input
@@ -9047,7 +9140,7 @@ export default function App() {
                       {showLoginPin ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-stone-600 px-1 pt-1.5 font-medium">
                     <span className="font-semibold text-stone-600">
                       🔒 Acceso exclusivo para personal autorizado
                     </span>
@@ -9061,7 +9154,7 @@ export default function App() {
           {loginMode === "owner" && (
             <div className="mt-3.5 p-3 rounded-xl bg-amber-50/90 border border-amber-200 text-xs">
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-[11px] font-black uppercase tracking-wider text-stone-800 flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-stone-800 flex items-center gap-1.5">
                   <ShieldCheck size={14} className="text-amber-700" /> Persistencia de Sesión
                 </span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -9114,24 +9207,24 @@ export default function App() {
           <button
             onClick={checkPinAndEnter}
             disabled={verifying || (ipLocked && loginMode !== "superadmin")}
-            className="w-full mt-5 rounded-xl p-3.5 font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-md hover:brightness-105 active:scale-[0.98] transition disabled:opacity-60 text-sm sm:text-base cursor-pointer"
+            className="w-full mt-5 rounded-xl p-3.5 font-bold flex items-center justify-center gap-2 shadow-md hover:brightness-105 active:scale-[0.98] transition disabled:opacity-60 text-sm sm:text-base cursor-pointer"
             style={{
               background: loginMode === "staff" ? "#2563EB" : loginMode === "superadmin" ? "#D97706" : BRAND.tomato,
               color: BRAND.cream,
             }}
           >
             {verifying ? (
-              <><LoaderCircle className="animate-spin" size={18} /> VERIFICANDO ACCESO...</>
+              <><LoaderCircle className="animate-spin" size={18} /> Verificando acceso...</>
             ) : (ipLocked && loginMode !== "superadmin") ? (
-              `BLOQUEADO (${formatLockTime(ipRemainingSeconds)})`
+              `Bloqueado (${formatLockTime(ipRemainingSeconds)})`
             ) : (ipLocked && loginMode === "superadmin") ? (
-              "DESBLOQUEAR IP COMO ADMINISTRADOR"
+              "Desbloquear IP como Administrador"
             ) : loginMode === "staff" ? (
-              userInput.trim() ? `INGRESAR COMO ${userInput.trim().toUpperCase()}` : "INGRESAR COMO PERSONAL"
+              userInput.trim() ? `Ingresar como ${userInput.trim()}` : "Ingresar como Personal"
             ) : loginMode === "owner" ? (
-              "INGRESAR AL PANEL DE GERENTE"
+              "Ingresar al Panel de Gerente"
             ) : (
-              "INGRESAR COMO ADMINISTRADOR ÚNICO"
+              "Ingresar como Administrador Único"
             )}
           </button>
 
